@@ -1,0 +1,32 @@
+{
+  "name": "fortinet-code-security-plugin",
+  "version": "1.0.0",
+  "description": "Lacework IaC and SCA scanning for Claude Code",
+  "env": {
+    "LW_ACCOUNT": "lacework.lacework.net",
+    "LW_API_KEY": "${LW_API_KEY}",
+    "LW_API_SECRET": "${LW_API_SECRET}"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

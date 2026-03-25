@@ -1,0 +1,23 @@
+{
+  "name": "lacework-test-fixture",
+  "version": "1.0.0",
+  "description": "Test fixture for Lacework SCA scanning (T-04, T-07). Contains intentionally vulnerable dependencies.",
+  "private": true,
+  "dependencies": {
+    "lodash": "4.17.15",
+    "axios": "0.19.0",
+    "minimist": "1.2.0",
+    "node-fetch": "2.6.0",
+    "express": "4.17.1",
+    "serialize-javascript": "2.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
