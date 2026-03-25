@@ -33,10 +33,11 @@ if [ "$EXIT" -eq 0 ]; then
 else
   fail "Warm session should exit 0, got $EXIT"
 fi
-if [ "$ELAPSED" -lt 1000 ]; then
-  pass "Warm session exits fast (${ELAPSED}ms < 1000ms)"
+# Warm session includes a GitHub API call (max-time 3s), so allow up to 5s
+if [ "$ELAPSED" -lt 5000 ]; then
+  pass "Warm session exits within 5s including update check (${ELAPSED}ms)"
 else
-  fail "Warm session too slow: ${ELAPSED}ms (expected < 1000ms)"
+  fail "Warm session too slow: ${ELAPSED}ms (expected < 5000ms)"
 fi
 rm -rf "$TMPDATA"
 
@@ -94,6 +95,30 @@ if grep -q 'apt-get install' "$HOOK" && grep -q 'yum install' "$HOOK" && grep -q
   pass "jq installed via apt/yum/apk on Linux"
 else
   fail "Linux package manager fallbacks for jq missing"
+fi
+
+# Update notification test
+echo ""
+echo "--- Update notification ---"
+if grep -q 'api.github.com/repos/lacework-dev/fortinet-code-security-plugin/releases/latest' "$HOOK"; then
+  pass "GitHub releases API queried for latest version"
+else
+  fail "GitHub releases API check missing"
+fi
+if grep -q 'max-time 3' "$HOOK"; then
+  pass "curl uses --max-time 3 (graceful offline degradation)"
+else
+  fail "--max-time missing — update check will hang when offline"
+fi
+if grep -q 'update available' "$HOOK"; then
+  pass "Update notification message present"
+else
+  fail "Update notification message missing"
+fi
+if grep -q 'To upgrade, run' "$HOOK"; then
+  pass "Upgrade command shown in notification"
+else
+  fail "Upgrade command missing from notification"
 fi
 
 # Component verification test
