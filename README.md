@@ -12,9 +12,33 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ## Install
 
+**Latest version:**
 ```bash
-claude plugin install fortinet-code-security-plugin
+claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
 ```
+
+**Specific version:**
+```bash
+claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/download/v1.2.0/fortinet-code-security-plugin-v1.2.0.zip
+```
+
+Replace `<your-org>` with your GitHub organisation name and `v1.2.0` with the version you want. Available versions are listed on the [Releases](../../releases) page.
+
+## Releases
+
+Releases are managed automatically via GitHub Actions:
+
+- **Auto-release**: Every push to `main` triggers a version bump and release. The bump type is determined from [conventional commit](https://www.conventionalcommits.org/) prefixes:
+
+  | Commit prefix | Version bump |
+  |---|---|
+  | `feat!:`, `fix!:` (breaking change) | Major (`1.0.0` → `2.0.0`) |
+  | `feat:` | Minor (`1.0.0` → `1.1.0`) |
+  | `fix:`, `chore:`, `refactor:`, etc. | Patch (`1.0.0` → `1.0.1`) |
+
+- **Manual release**: Go to **Actions → Release → Run workflow** and enter a specific version (e.g. `2.1.0`) to cut a release at an exact version. Use this to skip ahead, backport, or hotfix.
+
+Each release publishes a `.zip` artifact and updates the install command in the release notes.
 
 ## Configuration
 
@@ -23,7 +47,7 @@ Set your Lacework API credentials before installing the plugin:
 ```bash
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
-claude plugin install fortinet-code-security-plugin
+claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
 ```
 
 The plugin is pre-configured with a shared service account (`lacework.lacework.net`). Credentials are written to `~/.lacework.toml` with `chmod 600` on first session start.
@@ -140,23 +164,6 @@ bash tests/test-stop.sh
 | `tests/fixtures/vulnerable.tf` | Terraform with known misconfigurations (S3 public access, unrestricted SSH, wildcard IAM) for T-03/T-07 |
 | `tests/fixtures/vulnerable-package.json` | package.json with known vulnerable dependencies for T-04/T-07 |
 
-### Manual Test Cases
-
-| ID | Scenario | Expected Result |
-|---|---|---|
-| T-01 | Fresh install: no Lacework CLI present | CLI + components installed, credentials written |
-| T-02 | Warm session: already installed | Exit in <100ms, no output |
-| T-03 | Edit a `.tf` file and complete a task | IaC scan runs, findings surfaced |
-| T-04 | Edit `package.json` and complete a task | SCA scan runs, findings surfaced |
-| T-05 | Edit `package.json` again, no dep changes | Cache hit, SCA skipped |
-| T-06 | Edit `.tf` and `package.json` in same task | Both scanners run in parallel |
-| T-07 | IaC scan returns critical finding | `exit 2`, Claude auto-remediates |
-| T-08 | IaC scan returns only medium findings | `exit 0`, findings in stdout |
-| T-09 | Edit only `.py` source files | `exit 0` immediately, no scan |
-| T-10 | Run `/lacework:scan` | Appropriate scanner runs on current file |
-| T-11 | Bump `REQUIRED_VERSION` | Next session triggers full re-install |
-| T-12 | Run on Linux (Ubuntu 22.04) | All steps complete via curl installer |
-
 ## Platform Support
 
 | Platform | Install Method |
@@ -169,7 +176,6 @@ bash tests/test-stop.sh
 ## Requirements
 
 - bash 3.2+
-- `jq` (for JSON parsing)
 - macOS 13+ or Linux (Ubuntu 22.04+ recommended)
 - Internet access for initial install
 
