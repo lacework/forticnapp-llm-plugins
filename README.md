@@ -14,15 +14,15 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 **Latest version:**
 ```bash
-claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
+claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
 ```
 
 **Specific version:**
 ```bash
-claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/download/v1.2.0/fortinet-code-security-plugin-v1.2.0.zip
+claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/download/v1.2.0/fortinet-code-security-plugin-v1.2.0.zip
 ```
 
-Replace `<your-org>` with your GitHub organisation name and `v1.2.0` with the version you want. Available versions are listed on the [Releases](../../releases) page.
+Replace `v1.2.0` with the version you want. Available versions are listed on the [Releases](../../releases) page.
 
 ## Releases
 
@@ -47,7 +47,7 @@ Set your Lacework API credentials before installing the plugin:
 ```bash
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
-claude plugin install https://github.com/<your-org>/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
+claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
 ```
 
 The plugin is pre-configured with a shared service account (`lacework.lacework.net`). Credentials are written to `~/.lacework.toml` with `chmod 600` on first session start.
