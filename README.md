@@ -133,10 +133,7 @@ Phase 1 uses a shared service account. Two distribution options are available:
 | **A: Shell env vars** | Add `LW_API_KEY` and `LW_API_SECRET` to `~/.zshrc`. Plugin interpolates at install time. | Preferred — credentials not in version control |
 | **B: Baked-in key** | Credentials hardcoded in `plugin.json`. Distributed with the plugin. | Use only for fully internal, air-gapped environments |
 
-The shared service account MUST be:
-- Read-only (scan access only)
-- Scoped to the Code Security product
-- Rotated on a 90-day cycle
+The shared service account MUST be scoped to the Code Security product.
 
 ## Local Development
 
