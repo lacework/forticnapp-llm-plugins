@@ -138,9 +138,92 @@ The shared service account MUST be:
 - Scoped to the Code Security product
 - Rotated on a 90-day cycle
 
-## Testing
+## Local Development
 
-Run the included test suite:
+### 1. Install the plugin from your local clone
+
+```bash
+git clone git@github.com:lacework-dev/fortinet-code-security-plugin.git
+cd fortinet-code-security-plugin
+
+export LW_API_KEY="your-api-key"
+export LW_API_SECRET="your-api-secret"
+claude plugin install .
+```
+
+Claude Code resolves `CLAUDE_PLUGIN_ROOT` to the directory you pass, so any edits you make to the hooks are picked up immediately on the next session — no reinstall needed.
+
+### 2. Test the SessionStart hook directly
+
+```bash
+export CLAUDE_PLUGIN_DATA="$HOME/.claude/plugins/fortinet-code-security-plugin/data"
+export LW_ACCOUNT="lacework.lacework.net"
+export LW_API_KEY="your-api-key"
+export LW_API_SECRET="your-api-secret"
+
+bash hooks/session-start.sh
+```
+
+Run it a second time to verify the warm-session fast-exit and update check:
+
+```bash
+bash hooks/session-start.sh
+```
+
+### 3. Test the Stop hook directly
+
+Pipe a crafted session JSON to simulate Claude Code completing a task. The `file_path` values drive which scanner(s) are invoked.
+
+**IaC scan (Terraform):**
+```bash
+echo '{
+  "transcript": [{
+    "tool_uses": [{
+      "tool_name": "Write",
+      "tool_input": { "file_path": "tests/fixtures/vulnerable.tf" }
+    }]
+  }]
+}' | bash hooks/stop.sh
+```
+
+**SCA scan (package.json):**
+```bash
+echo '{
+  "transcript": [{
+    "tool_uses": [{
+      "tool_name": "Write",
+      "tool_input": { "file_path": "tests/fixtures/vulnerable-package.json" }
+    }]
+  }]
+}' | bash hooks/stop.sh
+```
+
+**Both scanners in parallel:**
+```bash
+echo '{
+  "transcript": [{
+    "tool_uses": [
+      { "tool_name": "Write", "tool_input": { "file_path": "tests/fixtures/vulnerable.tf" } },
+      { "tool_name": "Write", "tool_input": { "file_path": "tests/fixtures/vulnerable-package.json" } }
+    ]
+  }]
+}' | bash hooks/stop.sh
+```
+
+**No scan (source files only):**
+```bash
+echo '{
+  "transcript": [{
+    "tool_uses": [{
+      "tool_name": "Edit",
+      "tool_input": { "file_path": "src/app.py" }
+    }]
+  }]
+}' | bash hooks/stop.sh
+echo "Exit code: $?"
+```
+
+### 4. Run the automated test suite
 
 ```bash
 # Test session-start.sh logic
@@ -154,8 +237,8 @@ bash tests/test-stop.sh
 
 | File | Purpose |
 |---|---|
-| `tests/fixtures/vulnerable.tf` | Terraform with known misconfigurations (S3 public access, unrestricted SSH, wildcard IAM) for T-03/T-07 |
-| `tests/fixtures/vulnerable-package.json` | package.json with known vulnerable dependencies for T-04/T-07 |
+| `tests/fixtures/vulnerable.tf` | Terraform with known misconfigurations (S3 public access, unrestricted SSH, wildcard IAM) |
+| `tests/fixtures/vulnerable-package.json` | npm manifest with known vulnerable dependency versions |
 
 ## Platform Support
 
