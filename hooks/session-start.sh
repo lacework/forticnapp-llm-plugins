@@ -75,16 +75,13 @@ command -v lacework &>/dev/null || {
   echo "ERROR: lacework CLI not found after install" >&2; exit 1
 }
 
-# Step 3: Write credentials
-mkdir -p "$HOME/.lacework"
-cat > "$HOME/.lacework.toml" <<TOMLEOF
-[default]
-  account    = "${LW_ACCOUNT}"
-  api_key    = "${LW_API_KEY}"
-  api_secret = "${LW_API_SECRET}"
-  version    = 2
-TOMLEOF
-chmod 600 "$HOME/.lacework.toml"
+# Step 3: Configure credentials
+lacework configure --account "${LW_ACCOUNT}" \
+  --api_key "${LW_API_KEY}" \
+  --api_secret "${LW_API_SECRET}" \
+  --noninteractive >&2 || {
+  echo "ERROR: lacework configure failed" >&2; exit 1
+}
 
 # Step 4 & 5: Install components
 for COMPONENT in iac sca; do

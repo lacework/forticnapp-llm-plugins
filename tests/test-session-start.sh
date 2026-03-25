@@ -19,8 +19,9 @@ echo ""
 echo "--- T-02: Warm session idempotency ---"
 TMPDATA=$(mktemp -d)
 export CLAUDE_PLUGIN_DATA="$TMPDATA"
-# Simulate already-installed state
-echo "1.0.0" > "$TMPDATA/.lw-version"
+# Simulate already-installed state using the current REQUIRED_VERSION from the hook
+CURRENT_REQUIRED=$(grep '^REQUIRED_VERSION=' "$HOOK" | cut -d'"' -f2)
+echo "$CURRENT_REQUIRED" > "$TMPDATA/.lw-version"
 touch "$TMPDATA/.lw-installed"
 get_ms() { python3 -c "import time; print(int(time.time()*1000))"; }
 START=$(get_ms)
@@ -49,7 +50,7 @@ TMPDATA=$(mktemp -d)
 echo "0.9.0" > "$TMPDATA/.lw-version"
 touch "$TMPDATA/.lw-installed"
 # Modify hook to check an old version - we just verify the marker logic
-if grep -q 'REQUIRED_VERSION="1.0.0"' "$HOOK"; then
+if grep -q '^REQUIRED_VERSION=' "$HOOK"; then
   pass "REQUIRED_VERSION constant exists in session-start.sh"
 else
   fail "REQUIRED_VERSION constant not found in session-start.sh"
@@ -64,18 +65,23 @@ else
 fi
 rm -rf "$TMPDATA"
 
-# Credential file format test
+# Credential configuration test
 echo ""
-echo "--- Credential file format ---"
-if grep -q 'chmod 600' "$HOOK"; then
-  pass "Credential file uses chmod 600"
+echo "--- Credential configuration ---"
+if grep -q 'lacework configure' "$HOOK"; then
+  pass "Uses lacework configure for credentials"
 else
-  fail "Credential file missing chmod 600"
+  fail "lacework configure missing"
 fi
-if grep -q 'version    = 2' "$HOOK"; then
-  pass "TOML config has version = 2"
+if grep -q 'noninteractive' "$HOOK"; then
+  pass "lacework configure runs non-interactively"
 else
-  fail "TOML config missing version = 2"
+  fail "--noninteractive flag missing"
+fi
+if grep -q 'LW_ACCOUNT\|LW_API_KEY\|LW_API_SECRET' "$HOOK"; then
+  pass "Credentials passed from environment variables"
+else
+  fail "Environment variable credentials missing"
 fi
 
 # jq auto-install test
