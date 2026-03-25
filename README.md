@@ -10,19 +10,26 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 - **Smart scoping**: Only scans files changed in the current task, not the whole repo
 - **Dependency caching**: SCA scans skipped when dependencies haven't changed
 
-## Install
+## Install & Configuration
 
-**Latest version:**
+Set your Lacework API credentials, then install the plugin:
+
 ```bash
+export LW_API_KEY="your-api-key"
+export LW_API_SECRET="your-api-secret"
+
+# Latest version
 claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
-```
 
-**Specific version:**
-```bash
+# Or a specific version
 claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/download/v1.2.0/fortinet-code-security-plugin-v1.2.0.zip
 ```
 
 Replace `v1.2.0` with the version you want. Available versions are listed on the [Releases](../../releases) page.
+
+The plugin is pre-configured with a shared service account (`lacework.lacework.net`). On first session start it installs all dependencies and writes credentials to `~/.lacework.toml` with `chmod 600` — no further setup required.
+
+> For credential distribution options, see [Credential Strategy](#credential-strategy).
 
 ## Releases
 
@@ -39,20 +46,6 @@ Releases are managed automatically via GitHub Actions:
 - **Manual release**: Go to **Actions → Release → Run workflow** and enter a specific version (e.g. `2.1.0`) to cut a release at an exact version. Use this to skip ahead, backport, or hotfix.
 
 Each release publishes a `.zip` artifact and updates the install command in the release notes.
-
-## Configuration
-
-Set your Lacework API credentials before installing the plugin:
-
-```bash
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
-```
-
-The plugin is pre-configured with a shared service account (`lacework.lacework.net`). Credentials are written to `~/.lacework.toml` with `chmod 600` on first session start.
-
-> For credential distribution options, see [Credential Strategy](#credential-strategy).
 
 ## How It Works
 
