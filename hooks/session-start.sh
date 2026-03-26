@@ -9,13 +9,16 @@ REQUIRED_VERSION="1.2.2"
 # Fast exit if already installed at current version — but check for upstream updates
 if [ -f "$INSTALL_MARKER" ] && \
    [ "$(cat "$VERSION_FILE" 2>/dev/null)" = "$REQUIRED_VERSION" ]; then
-  LATEST=$(curl -sf --max-time 3 \
-    https://api.github.com/repos/lacework-dev/fortinet-code-security-plugin/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')
-  if [ -n "$LATEST" ] && [ "$LATEST" != "$REQUIRED_VERSION" ]; then
-    echo "Fortinet Code Security Plugin update available: v${LATEST} (installed: v${REQUIRED_VERSION})" >&2
-    echo "To upgrade, run:" >&2
-    echo "  claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip" >&2
+  # Use gh CLI for authenticated access to private repo
+  if command -v gh &>/dev/null; then
+    LATEST=$(gh api repos/lacework-dev/fortinet-code-security-plugin/releases/latest --jq '.tag_name' 2>/dev/null | tr -d 'v')
+    if [ -n "$LATEST" ] && [ "$LATEST" != "$REQUIRED_VERSION" ]; then
+      echo "Fortinet Code Security Plugin update available: v${LATEST} (installed: v${REQUIRED_VERSION})" >&2
+      echo "To upgrade, run:" >&2
+      echo "  gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip" >&2
+      echo "  unzip -o fortinet-code-security-plugin.zip -d fortinet-code-security-plugin" >&2
+      echo "  cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin" >&2
+    fi
   fi
   exit 0
 fi

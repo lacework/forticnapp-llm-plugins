@@ -12,20 +12,37 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ## Install & Configuration
 
-Set your Lacework API credentials, then install the plugin:
+> **Note**: This is a private plugin distributed via GitHub Releases. Only organization members with repo access can install it.
+
+### Prerequisites
+
+- [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`)
+- Lacework API credentials (provided by your team)
+
+### Installation
+
+Set your Lacework API credentials, then download and install the plugin:
 
 ```bash
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 
-# Latest version
-claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/latest/download/fortinet-code-security-plugin.zip
+# Download latest version
+gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip
 
-# Or a specific version
-claude plugin install https://github.com/lacework-dev/fortinet-code-security-plugin/releases/download/v1.2.0/fortinet-code-security-plugin-v1.2.0.zip
+# Or download a specific version
+gh release download v1.2.2 -R lacework-dev/fortinet-code-security-plugin -A zip
+
+# Extract and install
+unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
+cd fortinet-code-security-plugin
+
+# Register as marketplace and install
+claude plugin marketplace add ./
+claude plugin install fortinet-code-security-plugin
 ```
 
-Replace `v1.2.0` with the version you want. Available versions are listed on the [Releases](../../releases) page.
+Available versions are listed on the [Releases](../../releases) page.
 
 The plugin is pre-configured with a shared service account (`lacework.lacework.net`). On first session start it installs all dependencies and writes credentials to `~/.lacework.toml` with `chmod 600` — no further setup required.
 
@@ -145,7 +162,10 @@ cd fortinet-code-security-plugin
 
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
-claude plugin install .
+
+# Register as marketplace and install
+claude plugin marketplace add ./
+claude plugin install fortinet-code-security-plugin
 ```
 
 Claude Code resolves `CLAUDE_PLUGIN_ROOT` to the directory you pass, so any edits you make to the hooks are picked up immediately on the next session — no reinstall needed.
