@@ -1,12 +1,12 @@
 ---
-name: lacework-scan
-description: Run Lacework IaC and/or SCA security scan on infrastructure code and dependency manifests
+name: fortinet-scan
+description: Run Fortinet Code Security IaC and/or SCA scan on infrastructure code and dependency manifests
 user-invocable: true
 ---
 
-# Lacework Security Scan
+# Fortinet Code Security Scan
 
-Runs Lacework IaC and/or SCA scan on the current working file or directory.
+Runs Fortinet Code Security IaC and/or SCA scan on the current working file or directory.
 
 Route based on file type:
 - **IaC** → run `lacework iac scan -d <dir>`:

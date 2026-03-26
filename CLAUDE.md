@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **Claude Code plugin** that integrates Lacework Code Security (IaC and SCA scanning) directly into the Claude Code workflow. The plugin automatically scans infrastructure-as-code and dependency manifests for security vulnerabilities after each task completes.
+This is a **Claude Code plugin** that integrates Fortinet Code Security (IaC and SCA scanning) directly into the Claude Code workflow. The plugin automatically scans infrastructure-as-code and dependency manifests for security vulnerabilities after each task completes.
 
 ## Development Commands
 
@@ -18,7 +18,9 @@ bash tests/test-stop.sh            # Test stop hook logic
 ```bash
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
-claude plugin install .
+
+claude plugin marketplace add $PWD --name fortinet-plugins
+claude plugin install code-security@fortinet-plugins
 ```
 
 ### Test hooks manually
@@ -36,13 +38,15 @@ echo '{"transcript":[{"tool_uses":[{"tool_name":"Write","tool_input":{"file_path
 
 ### Plugin Structure
 ```
-.claude-plugin/plugin.json  # Plugin manifest (name, version, hook registration)
+.claude-plugin/plugin.json  # Plugin manifest (name: "code-security", version, hook registration)
 hooks/
   session-start.sh          # Runs on SessionStart: installs jq, Lacework CLI, configures credentials
   stop.sh                   # Runs on Stop: routes files to IaC/SCA scanners, aggregates findings
 scripts/
   install-lw.sh             # Reusable Lacework CLI installer (can be sourced or run directly)
-skills/lacework/SKILL.md    # Defines /lacework:scan and /lacework:review slash commands
+skills/
+  fortinet-scan/SKILL.md    # Defines /fortinet-scan slash command
+  fortinet-review/SKILL.md  # Defines /fortinet-review slash command
 tests/
   fixtures/                 # Intentionally vulnerable files for testing scanners
 ```
@@ -147,4 +151,4 @@ Leverage the existing Lacework CLI's ability to pull runtime cloud security data
 #### Implementation Notes
 - All exception suggestions require explicit user acceptance — nothing is auto-suppressed
 - `codesec.yaml` and `audit.md` should be committed to the repo so the full team has visibility
-- The findings table, exception management, and audit logging could be exposed as new `/lacework:triage` or similar slash commands
+- The findings table, exception management, and audit logging could be exposed as new `/fortinet-triage` or similar slash commands

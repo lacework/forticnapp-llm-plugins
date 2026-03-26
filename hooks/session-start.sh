@@ -1,10 +1,10 @@
 #!/bin/bash
-# session-start.sh — Lacework plugin installer
+# session-start.sh — Fortinet Code Security plugin installer
 # Runs on every SessionStart. Idempotent.
 
 INSTALL_MARKER="${CLAUDE_PLUGIN_DATA}/.lw-installed"
 VERSION_FILE="${CLAUDE_PLUGIN_DATA}/.lw-version"
-REQUIRED_VERSION="1.2.5"
+REQUIRED_VERSION="1.3.0"
 
 # Fast exit if already installed at current version — but check for upstream updates
 if [ -f "$INSTALL_MARKER" ] && \
@@ -17,13 +17,13 @@ if [ -f "$INSTALL_MARKER" ] && \
       echo "To upgrade, run:" >&2
       echo "  gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip" >&2
       echo "  unzip -o fortinet-code-security-plugin.zip -d fortinet-code-security-plugin" >&2
-      echo "  cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin" >&2
+      echo "  cd fortinet-code-security-plugin && claude plugin uninstall code-security@fortinet-plugins && claude plugin install code-security@fortinet-plugins" >&2
     fi
   fi
   exit 0
 fi
 
-echo "Lacework plugin: first-time setup..." >&2
+echo "Fortinet Code Security: first-time setup..." >&2
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 
 # Step 1: Install jq (required for session JSON parsing in stop.sh)
@@ -105,5 +105,5 @@ done
 # Mark installed
 echo "$REQUIRED_VERSION" > "$VERSION_FILE"
 touch "$INSTALL_MARKER"
-echo "Lacework plugin ready (IaC + SCA components installed)" >&2
+echo "Fortinet Code Security ready (IaC + SCA components installed)" >&2
 exit 0

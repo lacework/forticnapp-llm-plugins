@@ -1,6 +1,6 @@
 # Fortinet Code Security Plugin for Claude Code
 
-Automatically scans your IaC and dependency files for security vulnerabilities using Lacework Code Security — directly within your Claude Code workflow.
+Automatically scans your IaC and dependency files for security vulnerabilities using Fortinet Code Security — directly within your Claude Code workflow.
 
 ## Features
 
@@ -31,15 +31,17 @@ export LW_API_SECRET="your-api-secret"
 gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip
 
 # Or download a specific version
-gh release download v1.2.2 -R lacework-dev/fortinet-code-security-plugin -A zip
+gh release download v1.3.0 -R lacework-dev/fortinet-code-security-plugin -A zip
 
 # Extract and install
 unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
 cd fortinet-code-security-plugin
 
-# Register as marketplace and install
-claude plugin marketplace add $PWD
-claude plugin install fortinet-code-security-plugin
+# Register as marketplace (creates "fortinet-plugins" marketplace)
+claude plugin marketplace add $PWD --name fortinet-plugins
+
+# Install the plugin
+claude plugin install code-security@fortinet-plugins
 ```
 
 Available versions are listed on the [Releases](../../releases) page.
@@ -115,10 +117,10 @@ After every Claude Code task completes:
 
 ### Slash Commands
 
-#### `/lacework-scan`
+#### `/fortinet-scan`
 Runs an on-demand scan on the current file or directory.
 
-#### `/lacework-review`
+#### `/fortinet-review`
 Full security review before committing or opening a PR. Scans all files changed since the last git commit and produces a structured report.
 
 ## Session Lifecycle
@@ -164,11 +166,15 @@ export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 
 # Register as marketplace and install
-claude plugin marketplace add ./
-claude plugin install fortinet-code-security-plugin
+claude plugin marketplace add $PWD --name fortinet-plugins
+claude plugin install code-security@fortinet-plugins
 ```
 
-Claude Code resolves `CLAUDE_PLUGIN_ROOT` to the directory you pass, so any edits you make to the hooks are picked up immediately on the next session — no reinstall needed.
+> **Note**: When the plugin is installed, it is **copied to the cache** (`~/.claude/plugins/cache/...`). Edits to your local source directory are NOT picked up automatically — you must reinstall after making changes:
+> ```bash
+> claude plugin uninstall code-security@fortinet-plugins
+> claude plugin install code-security@fortinet-plugins
+> ```
 
 ### 2. Test the SessionStart hook directly
 
