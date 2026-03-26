@@ -37,10 +37,8 @@ gh release download v1.3.0 -R lacework-dev/fortinet-code-security-plugin -A zip
 unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
 cd fortinet-code-security-plugin
 
-# Register as marketplace (creates "fortinet-plugins" marketplace)
-claude plugin marketplace add $PWD --name fortinet-plugins
-
-# Install the plugin
+# Register marketplace and install (marketplace name "fortinet-plugins" is defined in .claude-plugin/marketplace.json)
+claude plugin marketplace add $PWD
 claude plugin install code-security@fortinet-plugins
 ```
 
@@ -165,8 +163,8 @@ cd fortinet-code-security-plugin
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 
-# Register as marketplace and install
-claude plugin marketplace add $PWD --name fortinet-plugins
+# Register marketplace and install
+claude plugin marketplace add $PWD
 claude plugin install code-security@fortinet-plugins
 ```
 

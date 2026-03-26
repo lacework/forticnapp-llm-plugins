@@ -19,7 +19,7 @@ bash tests/test-stop.sh            # Test stop hook logic
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 
-claude plugin marketplace add $PWD --name fortinet-plugins
+claude plugin marketplace add $PWD
 claude plugin install code-security@fortinet-plugins
 ```
 
