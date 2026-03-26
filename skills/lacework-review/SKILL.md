@@ -1,6 +1,7 @@
 ---
 name: lacework-review
 description: Full security review of changed files before committing or opening a PR
+user-invocable: true
 ---
 
 # Lacework Security Review
