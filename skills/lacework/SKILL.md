@@ -5,7 +5,7 @@
 Runs Lacework IaC and/or SCA scan on the current working file or directory.
 
 Route based on file type:
-- **IaC** → run `lacework iac scan --path <dir>`:
+- **IaC** → run `lacework iac scan -d <dir>`:
   - Terraform/HCL: `*.tf`, `*.tfvars`, `*.hcl`
   - Azure Bicep: `*.bicep`
   - CloudFormation: `*.template`, or `*.yaml`/`*.json` in `cloudformation/` paths
@@ -15,7 +15,7 @@ Route based on file type:
   - Docker Compose: `docker-compose*.yml`, `compose.yml`
   - CDK: `cdk.json`
   - Ansible: files in `ansible/`, `playbooks/` paths
-- **SCA** → run `lacework sca scan --path <dir>`:
+- **SCA** → run `lacework sca scan -d <dir>`:
   - Node/JS: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `npm-shrinkwrap.json`
   - Python: `requirements*.txt`, `Pipfile`, `pyproject.toml`, `poetry.lock`, `setup.py`, `setup.cfg`
   - Go: `go.mod`, `go.sum`

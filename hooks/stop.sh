@@ -45,7 +45,7 @@ PIDS=()
 # Launch IaC scan if infra files changed
 if [ -n "$IAC_FILES" ]; then
   SCAN_PATH=$(echo "$IAC_FILES" | head -1 | xargs dirname)
-  lacework iac scan --output json --path "$SCAN_PATH" \
+  lacework iac scan --output json -d "$SCAN_PATH" \
     > "$SCAN_TMPDIR/iac.json" 2>&1 &
   PIDS+=($!)
 fi
@@ -66,7 +66,7 @@ if [ -n "$SCA_FILES" ]; then
     echo "Lacework SCA: no dependency changes, skipping scan (cache hit)"
   else
     SCAN_PATH=$(echo "$SCA_FILES" | head -1 | xargs dirname)
-    lacework sca scan --output json --path "$SCAN_PATH" \
+    lacework sca scan --output json -d "$SCAN_PATH" \
       > "$SCAN_TMPDIR/sca.json" 2>&1 &
     PIDS+=($!)
     SCA_MANIFEST="$MANIFEST"
