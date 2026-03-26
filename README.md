@@ -38,7 +38,7 @@ unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
 cd fortinet-code-security-plugin
 
 # Register as marketplace and install
-claude plugin marketplace add ./
+claude plugin marketplace add $PWD
 claude plugin install fortinet-code-security-plugin
 ```
 
@@ -115,10 +115,10 @@ After every Claude Code task completes:
 
 ### Slash Commands
 
-#### `/lacework:scan`
+#### `/lacework-scan`
 Runs an on-demand scan on the current file or directory.
 
-#### `/lacework:review`
+#### `/lacework-review`
 Full security review before committing or opening a PR. Scans all files changed since the last git commit and produces a structured report.
 
 ## Session Lifecycle
