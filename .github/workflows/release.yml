@@ -98,9 +98,21 @@ jobs:
             echo "$LOG"
             echo ""
             echo "---"
-            echo "**Install latest:** \`claude plugin install https://github.com/${{ github.repository }}/releases/latest/download/fortinet-code-security-plugin.zip\`"
+            echo "## Install"
             echo ""
-            echo "**Install this version:** \`claude plugin install https://github.com/${{ github.repository }}/releases/download/v${{ steps.target.outputs.version }}/fortinet-code-security-plugin-v${{ steps.target.outputs.version }}.zip\`"
+            echo "**Latest version:**"
+            echo "\`\`\`bash"
+            echo "gh release download --latest -R ${{ github.repository }} -A zip"
+            echo "unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin"
+            echo "cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin"
+            echo "\`\`\`"
+            echo ""
+            echo "**This version (v${{ steps.target.outputs.version }}):**"
+            echo "\`\`\`bash"
+            echo "gh release download v${{ steps.target.outputs.version }} -R ${{ github.repository }} -A zip"
+            echo "unzip fortinet-code-security-plugin-v${{ steps.target.outputs.version }}.zip -d fortinet-code-security-plugin"
+            echo "cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin"
+            echo "\`\`\`"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -109,13 +121,15 @@ jobs:
           V="${{ steps.target.outputs.version }}"
           # Update plugin.json
           jq --arg v "$V" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
+          # Update marketplace.json
+          jq --arg v "$V" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
           # Update REQUIRED_VERSION in session-start.sh
           sed -i "s/^REQUIRED_VERSION=.*/REQUIRED_VERSION=\"$V\"/" hooks/session-start.sh
 
       - name: Commit version bump and tag
         run: |
           V="${{ steps.target.outputs.version }}"
-          git add .claude-plugin/plugin.json hooks/session-start.sh
+          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/session-start.sh
           git commit -m "chore: release v${V} [skip ci]"
           git push
           git tag "v${V}"

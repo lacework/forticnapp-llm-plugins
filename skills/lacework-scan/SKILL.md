@@ -1,6 +1,9 @@
-# Lacework Security Scanning
+---
+name: lacework-scan
+description: Run Lacework IaC and/or SCA security scan on infrastructure code and dependency manifests
+---
 
-## /lacework:scan
+# Lacework Security Scan
 
 Runs Lacework IaC and/or SCA scan on the current working file or directory.
 
@@ -30,18 +33,3 @@ Route based on file type:
   - Dart/Flutter: `pubspec.yaml`, `pubspec.lock`
 - If both types are present, run both scans in parallel.
 - Print all findings grouped by severity (Critical → High → Medium → Low).
-
-## /lacework:review
-
-Full security review before committing or opening a PR.
-
-1. Identify all files changed since last git commit: `git diff --name-only HEAD`
-2. Classify files by type (IaC vs SCA manifests vs source code)
-3. Run appropriate scans in parallel using background processes
-4. Produce a structured security report with:
-   - **Critical findings** (must fix before proceeding)
-   - **High findings** (should fix before merging)
-   - **Medium/low findings** (consider fixing — informational)
-   - Files scanned
-   - Scan duration
-   - Recommendations for remediation
