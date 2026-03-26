@@ -144,7 +144,6 @@ jobs:
             .claude-plugin/ \
             hooks/ \
             scripts/ \
-            skills/ \
             README.md
           cp "$VERSIONED_ZIP" "$LATEST_ZIP"
           echo "versioned_zip=$VERSIONED_ZIP" >> "$GITHUB_ENV"

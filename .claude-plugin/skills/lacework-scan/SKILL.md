@@ -1,6 +1,7 @@
 ---
 name: lacework-scan
 description: Run Lacework IaC and/or SCA security scan on infrastructure code and dependency manifests
+user-invocable: true
 ---
 
 # Lacework Security Scan

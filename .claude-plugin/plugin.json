@@ -2,7 +2,6 @@
   "name": "fortinet-code-security-plugin",
   "version": "1.2.4",
   "description": "Lacework IaC and SCA scanning for Claude Code",
-  "skills": "../skills/",
   "hooks": {
     "SessionStart": [
       {
