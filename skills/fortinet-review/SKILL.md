@@ -1,10 +1,10 @@
 ---
-name: lacework-review
+name: fortinet-review
 description: Full security review of changed files before committing or opening a PR
 user-invocable: true
 ---
 
-# Lacework Security Review
+# Fortinet Code Security Review
 
 Full security review before committing or opening a PR.
 
