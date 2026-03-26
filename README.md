@@ -36,7 +36,10 @@ gh release download v1.2.2 -R lacework-dev/fortinet-code-security-plugin -A zip
 # Extract and install
 unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
 cd fortinet-code-security-plugin
-claude plugin install .
+
+# Register as marketplace and install
+claude plugin marketplace add ./
+claude plugin install fortinet-code-security-plugin
 ```
 
 Available versions are listed on the [Releases](../../releases) page.
@@ -159,7 +162,10 @@ cd fortinet-code-security-plugin
 
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
-claude plugin install .
+
+# Register as marketplace and install
+claude plugin marketplace add ./
+claude plugin install fortinet-code-security-plugin
 ```
 
 Claude Code resolves `CLAUDE_PLUGIN_ROOT` to the directory you pass, so any edits you make to the hooks are picked up immediately on the next session — no reinstall needed.

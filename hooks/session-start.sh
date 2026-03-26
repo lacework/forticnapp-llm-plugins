@@ -16,8 +16,8 @@ if [ -f "$INSTALL_MARKER" ] && \
       echo "Fortinet Code Security Plugin update available: v${LATEST} (installed: v${REQUIRED_VERSION})" >&2
       echo "To upgrade, run:" >&2
       echo "  gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip" >&2
-      echo "  unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin" >&2
-      echo "  cd fortinet-code-security-plugin && claude plugin install ." >&2
+      echo "  unzip -o fortinet-code-security-plugin.zip -d fortinet-code-security-plugin" >&2
+      echo "  cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin" >&2
     fi
   fi
   exit 0
