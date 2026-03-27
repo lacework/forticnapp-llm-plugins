@@ -1,19 +1,15 @@
 #!/bin/bash
-# stop.sh — Lacework scan orchestrator
-# Fires after every Claude Code task. Routes, scans, reports.
+# stop.sh — Fortinet Code Security scan orchestrator
+# Fires after Write/Edit tool calls via PostToolUse hook.
+# Outputs JSON with systemMessage for visibility in Claude Code UI.
 
 SCAN_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 
-SESSION=$(cat)
+HOOK_INPUT=$(cat)
 
-# Extract changed file paths from session JSON
-CHANGED=$(echo "$SESSION" | jq -r '
-  .transcript[-1].tool_uses[]?
-  | select(.tool_name == "Write" or .tool_name == "Edit"
-           or .tool_name == "MultiEdit")
-  | .tool_input.file_path // .tool_input.path
-' 2>/dev/null | sort -u)
+# PostToolUse hook provides tool_input with file_path directly
+CHANGED=$(echo "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
 [ -z "$CHANGED" ] && exit 0
 
@@ -40,13 +36,19 @@ SCA_PATTERN+='|(^|/)pubspec\.(yaml|lock)$'
 IAC_FILES=$(echo "$CHANGED" | grep -E "$IAC_PATTERN" || true)
 SCA_FILES=$(echo "$CHANGED" | grep -E "$SCA_PATTERN" || true)
 
+# Exit silently if no relevant files
+[ -z "$IAC_FILES" ] && [ -z "$SCA_FILES" ] && exit 0
+
 PIDS=()
+SCAN_TYPE=""
 
 # Launch IaC scan if infra files changed
 if [ -n "$IAC_FILES" ]; then
   SCAN_PATH=$(echo "$IAC_FILES" | head -1 | xargs dirname)
-  lacework iac scan --output json -d "$SCAN_PATH" \
-    > "$SCAN_TMPDIR/iac.json" 2>&1 &
+  SCAN_TYPE="IaC"
+  # Only capture stdout (JSON), discard stderr (info messages)
+  lacework iac scan --format json -d "$SCAN_PATH" \
+    > "$SCAN_TMPDIR/iac.json" 2>/dev/null &
   PIDS+=($!)
 fi
 
@@ -63,11 +65,14 @@ if [ -n "$SCA_FILES" ]; then
   CACHE_DIR="$HOME/.lacework/cache"
   mkdir -p "$CACHE_DIR"
   if [ -n "$HASH" ] && [ -f "$CACHE_DIR/$HASH" ]; then
-    echo "Lacework SCA: no dependency changes, skipping scan (cache hit)"
+    # Cache hit - skip SCA scan silently
+    :
   else
     SCAN_PATH=$(echo "$SCA_FILES" | head -1 | xargs dirname)
-    lacework sca scan --output json -d "$SCAN_PATH" \
-      > "$SCAN_TMPDIR/sca.json" 2>&1 &
+    [ -n "$SCAN_TYPE" ] && SCAN_TYPE="IaC+SCA" || SCAN_TYPE="SCA"
+    # Only capture stdout (JSON), discard stderr (info messages)
+    lacework sca scan --format json -d "$SCAN_PATH" \
+      > "$SCAN_TMPDIR/sca.json" 2>/dev/null &
     PIDS+=($!)
     SCA_MANIFEST="$MANIFEST"
     SCA_HASH="$HASH"
@@ -84,7 +89,8 @@ for PID in "${PIDS[@]}"; do wait "$PID"; done
 
 # Aggregate findings
 CRITICAL_COUNT=0
-REPORT=""
+HIGH_COUNT=0
+MEDIUM_COUNT=0
 
 for SCANNER in iac sca; do
   FILE="$SCAN_TMPDIR/${SCANNER}.json"
@@ -92,32 +98,34 @@ for SCANNER in iac sca; do
 
   # Check if jq can parse the file
   if ! jq empty "$FILE" 2>/dev/null; then
-    echo "[$SCANNER] WARNING: Could not parse scan output" >&2
     continue
   fi
 
-  COUNT=$(jq '[.findings[]? | select(.severity=="critical" or .severity=="high")] | length' \
-    "$FILE" 2>/dev/null || echo 0)
-  CRITICAL_COUNT=$((CRITICAL_COUNT + COUNT))
+  # Note: Lacework uses capitalized severity values: "Critical", "High", "Medium"
+  CRIT=$(jq '[.findings[]? | select(.severity=="Critical")] | length' "$FILE" 2>/dev/null || echo 0)
+  HIGH=$(jq '[.findings[]? | select(.severity=="High")] | length' "$FILE" 2>/dev/null || echo 0)
+  MED=$(jq '[.findings[]? | select(.severity=="Medium")] | length' "$FILE" 2>/dev/null || echo 0)
 
-  if [ "$COUNT" -gt 0 ]; then
-    REPORT+="[$SCANNER] $COUNT critical/high finding(s):\n"
-    FINDING_LINES=$(jq -r '.findings[]? |
-      select(.severity=="critical" or .severity=="high") |
-      "  - [\(.severity | ascii_upcase)] \(.file):\(.line // "N/A") \(.rule): \(.message)"' \
-      "$FILE" 2>/dev/null)
-    REPORT+="${FINDING_LINES}\n"
-  else
-    TOTAL=$(jq '.findings | length // 0' "$FILE" 2>/dev/null || echo 0)
-    [ "$TOTAL" -gt 0 ] && \
-      echo "[$SCANNER] $TOTAL medium/low finding(s) — review recommended"
-  fi
+  CRITICAL_COUNT=$((CRITICAL_COUNT + CRIT))
+  HIGH_COUNT=$((HIGH_COUNT + HIGH))
+  MEDIUM_COUNT=$((MEDIUM_COUNT + MED))
 done
 
-if [ "$CRITICAL_COUNT" -gt 0 ]; then
-  printf "Lacework found %d critical/high severity issue(s). Fix before proceeding:\n\n%b" \
-    "$CRITICAL_COUNT" "$REPORT" >&2
-  exit 2
+TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
+
+# Output JSON with systemMessage for Claude Code UI visibility
+if [ "$TOTAL_SEVERE" -gt 0 ]; then
+  MSG="Fortinet $SCAN_TYPE Security: Found $CRITICAL_COUNT critical, $HIGH_COUNT high severity issues. Run /code-security:fortinet-scan for details."
+  # Use stopReason to block if critical issues found
+  if [ "$CRITICAL_COUNT" -gt 0 ]; then
+    echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
+  else
+    echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
+  fi
+elif [ "$MEDIUM_COUNT" -gt 0 ]; then
+  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: $MEDIUM_COUNT medium severity issues found\", \"continue\": true}"
+else
+  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: No issues found\", \"continue\": true}"
 fi
 
 exit 0
