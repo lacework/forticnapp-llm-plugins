@@ -6,20 +6,9 @@ INSTALL_MARKER="${CLAUDE_PLUGIN_DATA}/.lw-installed"
 VERSION_FILE="${CLAUDE_PLUGIN_DATA}/.lw-version"
 REQUIRED_VERSION="1.3.1"
 
-# Fast exit if already installed at current version — but check for upstream updates
+# Fast exit if already installed at current version — skip update check to avoid blocking
 if [ -f "$INSTALL_MARKER" ] && \
    [ "$(cat "$VERSION_FILE" 2>/dev/null)" = "$REQUIRED_VERSION" ]; then
-  # Use gh CLI for authenticated access to private repo
-  if command -v gh &>/dev/null; then
-    LATEST=$(gh api repos/lacework-dev/fortinet-code-security-plugin/releases/latest --jq '.tag_name' 2>/dev/null | tr -d 'v')
-    if [ -n "$LATEST" ] && [ "$LATEST" != "$REQUIRED_VERSION" ]; then
-      echo "Fortinet Code Security Plugin update available: v${LATEST} (installed: v${REQUIRED_VERSION})" >&2
-      echo "To upgrade, run:" >&2
-      echo "  gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip" >&2
-      echo "  unzip -o fortinet-code-security-plugin.zip -d fortinet-code-security-plugin" >&2
-      echo "  cd fortinet-code-security-plugin && claude plugin uninstall code-security@fortinet-plugins && claude plugin install code-security@fortinet-plugins" >&2
-    fi
-  fi
   exit 0
 fi
 
