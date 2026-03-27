@@ -27,14 +27,14 @@ Set your Lacework API credentials, then download and install the plugin:
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 
-# Download latest version
-gh release download --latest -R lacework-dev/fortinet-code-security-plugin -A zip
+# Download and extract (latest version)
+gh release download -R lacework-dev/fortinet-code-security-plugin -A zip
+unzip -o fortinet-code-security-plugin-*.zip -d fortinet-code-security-plugin
 
 # Or download a specific version
-gh release download v1.3.0 -R lacework-dev/fortinet-code-security-plugin -A zip
+# gh release download v1.3.2 -R lacework-dev/fortinet-code-security-plugin -A zip
+# unzip -o fortinet-code-security-plugin-1.3.2.zip -d fortinet-code-security-plugin
 
-# Extract and install
-unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin
 cd fortinet-code-security-plugin
 
 # Register marketplace and install (marketplace name "fortinet-plugins" is defined in .claude-plugin/marketplace.json)
