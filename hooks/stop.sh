@@ -46,9 +46,11 @@ SCAN_TYPE=""
 if [ -n "$IAC_FILES" ]; then
   SCAN_PATH=$(echo "$IAC_FILES" | head -1 | xargs dirname)
   SCAN_TYPE="IaC"
-  # Only capture stdout (JSON), discard stderr (info messages)
-  lacework iac scan --format json -d "$SCAN_PATH" \
-    > "$SCAN_TMPDIR/iac.json" 2>/dev/null &
+  # --upload=false: skip uploading to Lacework cloud
+  # --quiet: suppress logging noise
+  # --save-result: direct file output (still outputs to stdout, so redirect to /dev/null)
+  lacework iac scan --format json --upload=false --quiet \
+    --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>&1 &
   PIDS+=($!)
 fi
 
@@ -70,9 +72,10 @@ if [ -n "$SCA_FILES" ]; then
   else
     SCAN_PATH=$(echo "$SCA_FILES" | head -1 | xargs dirname)
     [ -n "$SCAN_TYPE" ] && SCAN_TYPE="IaC+SCA" || SCAN_TYPE="SCA"
-    # Only capture stdout (JSON), discard stderr (info messages)
-    lacework sca scan --format json -d "$SCAN_PATH" \
-      > "$SCAN_TMPDIR/sca.json" 2>/dev/null &
+    # --quiet: suppress logging noise
+    # -f lw-json: Lacework JSON format
+    # -o: output to file
+    lacework sca scan --quiet -f lw-json -o "$SCAN_TMPDIR/sca.json" "$SCAN_PATH" 2>/dev/null &
     PIDS+=($!)
     SCA_MANIFEST="$MANIFEST"
     SCA_HASH="$HASH"
@@ -87,10 +90,15 @@ for PID in "${PIDS[@]}"; do wait "$PID"; done
 # Cache SCA manifest hash on success
 [ -n "$SCA_HASH" ] && touch "$HOME/.lacework/cache/$SCA_HASH"
 
-# Aggregate findings
+# Aggregate findings and extract details
 CRITICAL_COUNT=0
 HIGH_COUNT=0
 MEDIUM_COUNT=0
+FINDING_NUM=0
+
+# Build findings list in temp file for proper formatting
+FINDINGS_FILE="$SCAN_TMPDIR/findings.txt"
+> "$FINDINGS_FILE"
 
 for SCANNER in iac sca; do
   FILE="$SCAN_TMPDIR/${SCANNER}.json"
@@ -101,29 +109,60 @@ for SCANNER in iac sca; do
     continue
   fi
 
-  # Note: Lacework uses capitalized severity values: "Critical", "High", "Medium"
-  CRIT=$(jq '[.findings[]? | select(.severity=="Critical")] | length' "$FILE" 2>/dev/null || echo 0)
-  HIGH=$(jq '[.findings[]? | select(.severity=="High")] | length' "$FILE" 2>/dev/null || echo 0)
-  MED=$(jq '[.findings[]? | select(.severity=="Medium")] | length' "$FILE" 2>/dev/null || echo 0)
+  # Count only failed findings (pass == false)
+  # Lacework uses capitalized severity values: "Critical", "High", "Medium"
+  CRIT=$(jq '[.findings[]? | select(.pass==false and .severity=="Critical")] | length' "$FILE" 2>/dev/null || echo 0)
+  HIGH=$(jq '[.findings[]? | select(.pass==false and .severity=="High")] | length' "$FILE" 2>/dev/null || echo 0)
+  MED=$(jq '[.findings[]? | select(.pass==false and .severity=="Medium")] | length' "$FILE" 2>/dev/null || echo 0)
 
   CRITICAL_COUNT=$((CRITICAL_COUNT + CRIT))
   HIGH_COUNT=$((HIGH_COUNT + HIGH))
   MEDIUM_COUNT=$((MEDIUM_COUNT + MED))
+
+  # Extract critical and high FAILED findings with full details
+  # Uses correct field names: filePath, line, resource, title, description
+  while IFS='§' read -r sev title resource file_path line_num desc; do
+    [ -z "$sev" ] && continue
+    FINDING_NUM=$((FINDING_NUM + 1))
+
+    # Format location as file:line
+    if [ -z "$file_path" ] || [ "$file_path" = "null" ]; then
+      loc="N/A"
+    elif [ -z "$line_num" ] || [ "$line_num" = "null" ]; then
+      loc="$file_path"
+    else
+      loc="$file_path:$line_num"
+    fi
+
+    # Truncate description if too long (keep first 150 chars)
+    if [ ${#desc} -gt 150 ]; then
+      desc="${desc:0:147}..."
+    fi
+
+    # Output as formatted list item
+    echo "**${FINDING_NUM}. [${sev}] ${title}**" >> "$FINDINGS_FILE"
+    echo "   - Resource: \`${resource}\`" >> "$FINDINGS_FILE"
+    echo "   - Location: \`${loc}\`" >> "$FINDINGS_FILE"
+    echo "   - ${desc}" >> "$FINDINGS_FILE"
+    echo "" >> "$FINDINGS_FILE"
+  done < <(jq -r '.findings[]? | select(.pass==false and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\(.description // "")"' "$FILE" 2>/dev/null)
 done
 
 TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
 
-# Output JSON with systemMessage for Claude Code UI visibility
+# Output JSON with findings list and actionable instructions for Claude
 if [ "$TOTAL_SEVERE" -gt 0 ]; then
-  MSG="Fortinet $SCAN_TYPE Security: Found $CRITICAL_COUNT critical, $HIGH_COUNT high severity issues. Run /code-security:fortinet-scan for details."
-  # Use stopReason to block if critical issues found
-  if [ "$CRITICAL_COUNT" -gt 0 ]; then
-    echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
-  else
-    echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
-  fi
+  # Read findings and escape for JSON
+  FINDINGS_LIST=$(cat "$FINDINGS_FILE" | sed 's/"/\\"/g' | sed 's/$/\\n/' | tr -d '\n')
+
+  SUMMARY="**Summary:** ${CRITICAL_COUNT} Critical, ${HIGH_COUNT} High severity issues"
+  INSTRUCTION="**ACTION REQUIRED:** Fix these security issues OR ask user to add exceptions for specific findings."
+
+  MSG="## Fortinet $SCAN_TYPE Security Scan\\n\\n${SUMMARY}\\n\\n${FINDINGS_LIST}${INSTRUCTION}"
+
+  echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
 elif [ "$MEDIUM_COUNT" -gt 0 ]; then
-  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: $MEDIUM_COUNT medium severity issues found\", \"continue\": true}"
+  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: $MEDIUM_COUNT medium severity issues (informational)\", \"continue\": true}"
 else
   echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: No issues found\", \"continue\": true}"
 fi
