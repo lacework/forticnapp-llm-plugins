@@ -45,7 +45,6 @@ hooks/
 scripts/
   install-lw.sh             # Reusable Lacework CLI installer (can be sourced or run directly)
 skills/
-  fortinet-scan/SKILL.md    # Defines /fortinet-scan slash command
   fortinet-review/SKILL.md  # Defines /fortinet-review slash command
 tests/
   fixtures/                 # Intentionally vulnerable files for testing scanners
