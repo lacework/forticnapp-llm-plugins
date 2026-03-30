@@ -115,11 +115,8 @@ After every Claude Code task completes:
 
 ### Slash Commands
 
-#### `/fortinet-scan`
-Runs an on-demand scan on the current file or directory.
-
 #### `/fortinet-review`
-Full security review before committing or opening a PR. Scans all files changed since the last git commit and produces a structured report.
+Runs a security scan on IaC and dependency files in the current directory. Detects file types automatically and runs appropriate scanners (IaC, SCA, or both). Produces a unified report grouped by severity with remediation recommendations.
 
 ## Session Lifecycle
 
