@@ -11,16 +11,15 @@
         ]
       }
     ],
-    "PostToolUse": [
+    "Stop": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh",
-            "timeout": 60
+            "timeout": 120
           }
-        ],
-        "matcher": "Edit|Write"
+        ]
       }
     ]
   }
