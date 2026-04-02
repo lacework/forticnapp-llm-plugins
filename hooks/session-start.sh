@@ -4,7 +4,7 @@
 
 INSTALL_MARKER="${CLAUDE_PLUGIN_DATA}/.lw-installed"
 VERSION_FILE="${CLAUDE_PLUGIN_DATA}/.lw-version"
-REQUIRED_VERSION="1.3.6"
+REQUIRED_VERSION="1.3.7"
 
 # Fast exit if already installed at current version
 if [ -f "$INSTALL_MARKER" ] && \
