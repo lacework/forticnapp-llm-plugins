@@ -24,11 +24,13 @@ CHANGED=$(cat "$TRANSCRIPT_PATH" | jq -r '
 
 [ -z "$CHANGED" ] && exit 0
 
-# Debug log
-DEBUG_LOG="/tmp/stop-hook-debug.log"
-echo "=== $(date) ===" > "$DEBUG_LOG"
-echo "CHANGED files:" >> "$DEBUG_LOG"
-echo "$CHANGED" >> "$DEBUG_LOG"
+# Track scanned files to avoid re-scanning same changes (prevents loop)
+SCAN_MARKER_DIR="$HOME/.lacework/scan-markers"
+mkdir -p "$SCAN_MARKER_DIR"
+CHANGES_HASH=$(echo "$CHANGED" | sha256sum 2>/dev/null | cut -d' ' -f1 || shasum -a 256 2>/dev/null | cut -d' ' -f1)
+MARKER_FILE="$SCAN_MARKER_DIR/$CHANGES_HASH"
+
+[ -f "$MARKER_FILE" ] && exit 0
 
 # Get scan directory from cwd in hook input
 SCAN_PATH=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
@@ -48,13 +50,6 @@ PIDS+=($!)
 
 # Wait for all scans
 for PID in "${PIDS[@]}"; do wait "$PID"; done
-
-# Debug: log scan results
-echo "SCAN_PATH: $SCAN_PATH" >> "$DEBUG_LOG"
-echo "IAC result exists: $([ -f "$SCAN_TMPDIR/iac.json" ] && echo yes || echo no)" >> "$DEBUG_LOG"
-echo "SCA result exists: $([ -f "$SCAN_TMPDIR/sca.json" ] && echo yes || echo no)" >> "$DEBUG_LOG"
-[ -f "$SCAN_TMPDIR/iac.json" ] && echo "IAC size: $(wc -c < "$SCAN_TMPDIR/iac.json")" >> "$DEBUG_LOG"
-[ -f "$SCAN_TMPDIR/sca.json" ] && echo "SCA size: $(wc -c < "$SCAN_TMPDIR/sca.json")" >> "$DEBUG_LOG"
 
 # Aggregate findings and extract details
 CRITICAL_COUNT=0
@@ -116,10 +111,10 @@ done
 
 TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
 
-# Output JSON with findings list and actionable instructions for Claude
+# Output findings and control exit code
 if [ "$TOTAL_SEVERE" -gt 0 ]; then
   FINDINGS_TEXT=$(cat "$FINDINGS_FILE")
-  REASON="## Fortinet $SCAN_TYPE Security Scan
+  MESSAGE="## Fortinet $SCAN_TYPE Security Scan
 
 **Summary:** ${CRITICAL_COUNT} Critical, ${HIGH_COUNT} High severity issues
 
@@ -127,24 +122,12 @@ $FINDINGS_TEXT
 
 **ACTION REQUIRED:** Fix these security issues OR ask user to add exceptions for specific findings."
 
-  USER_MSG="Fortinet $SCAN_TYPE Security: ${CRITICAL_COUNT} critical, ${HIGH_COUNT} high severity issues found. Review above."
+  # Mark these files as scanned to prevent re-scanning loop
+  touch "$MARKER_FILE"
 
-  # Correct Stop hook format: decision=block shows reason to Claude, systemMessage to user
-  OUTPUT=$(jq -c -n \
-    --arg reason "$REASON" \
-    --arg msg "$USER_MSG" \
-    '{"decision": "block", "reason": $reason, "systemMessage": $msg}')
-  echo "$OUTPUT" >> "$DEBUG_LOG"
-  echo "$OUTPUT"
-elif [ "$MEDIUM_COUNT" -gt 0 ]; then
-  OUTPUT=$(jq -c -n --arg msg "Fortinet $SCAN_TYPE Security: $MEDIUM_COUNT medium severity issues (informational)" '{"systemMessage": $msg}')
-  echo "$OUTPUT" >> "$DEBUG_LOG"
-  echo "$OUTPUT"
-else
-  OUTPUT=$(jq -c -n --arg msg "Fortinet $SCAN_TYPE Security: No issues found" '{"systemMessage": $msg}')
-  echo "$OUTPUT" >> "$DEBUG_LOG"
-  echo "$OUTPUT"
+  # Output to stderr so Claude sees findings, exit 2 to block and wait for user action
+  echo "$MESSAGE" >&2
+  exit 2
 fi
 
-echo "Final counts: CRIT=$CRITICAL_COUNT HIGH=$HIGH_COUNT MED=$MEDIUM_COUNT" >> "$DEBUG_LOG"
 exit 0
