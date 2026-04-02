@@ -1,6 +1,6 @@
 #!/bin/bash
 # stop.sh — Fortinet Code Security scan orchestrator
-# Fires after Write/Edit tool calls via PostToolUse hook.
+# Fires on Stop hook after a session completes.
 # Outputs JSON with systemMessage for visibility in Claude Code UI.
 
 SCAN_TMPDIR=$(mktemp -d)
@@ -8,87 +8,48 @@ trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 
 HOOK_INPUT=$(cat)
 
-# PostToolUse hook provides tool_input with file_path directly
-CHANGED=$(echo "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+# Stop hook provides transcript_path - read the JSONL transcript file
+TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty')
+
+[ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ] && exit 0
+
+# Extract files from Write/Edit/MultiEdit tool uses in the transcript
+# JSONL format: each line is a JSON object with .message.content[] containing tool_use
+CHANGED=$(cat "$TRANSCRIPT_PATH" | jq -r '
+  .message?.content[]? |
+  select(.type == "tool_use") |
+  select(.name == "Write" or .name == "Edit" or .name == "MultiEdit") |
+  .input.file_path // empty
+' 2>/dev/null | sort -u)
 
 [ -z "$CHANGED" ] && exit 0
 
-# IaC: Terraform/HCL, Azure Bicep, CloudFormation templates, Kubernetes manifests,
-#       Helm charts, Pulumi, Serverless Framework, Docker Compose, CDK, Ansible
-IAC_PATTERN='\.(tf|tfvars|hcl|bicep|template)$'
-IAC_PATTERN+='|(terraform|infra|iac|k8s|kubernetes|helm|charts|cloudformation|manifests|ansible|playbooks|argocd|flux)/'
-IAC_PATTERN+='|(Pulumi\.(yaml|yml)|serverless\.(yaml|yml)|docker-compose(\.[a-z]+)?\.(yaml|yml)|compose\.(yaml|yml)|cdk\.json)$'
+# Track scanned files to avoid re-scanning same changes (prevents loop)
+SCAN_MARKER_DIR="$HOME/.lacework/scan-markers"
+mkdir -p "$SCAN_MARKER_DIR"
+CHANGES_HASH=$(echo "$CHANGED" | sha256sum 2>/dev/null | cut -d' ' -f1 || shasum -a 256 2>/dev/null | cut -d' ' -f1)
+MARKER_FILE="$SCAN_MARKER_DIR/$CHANGES_HASH"
 
-# SCA: Node/JS, Python, Go, Java/Kotlin, Ruby, Rust, PHP, .NET, Swift, Scala, Elixir, Dart
-SCA_PATTERN='(^|/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json)$'
-SCA_PATTERN+='|(^|/)go\.(mod|sum)$'
-SCA_PATTERN+='|(^|/)(requirements[^/]*\.txt|Pipfile(\.lock)?|pyproject\.toml|poetry\.lock|setup\.(py|cfg))$'
-SCA_PATTERN+='|(^|/)(pom\.xml|build\.gradle(\.kts)?|.*\.gradle|gradle\.lockfile)$'
-SCA_PATTERN+='|(^|/)Gemfile(\.lock)?$'
-SCA_PATTERN+='|(^|/)Cargo\.(toml|lock)$'
-SCA_PATTERN+='|(^|/)composer\.(json|lock)$'
-SCA_PATTERN+='|(^|/).*\.(csproj|vbproj|fsproj)$|(^|/)packages\.config$'
-SCA_PATTERN+='|(^|/)(Package\.(swift|resolved)|Podfile(\.lock)?)$'
-SCA_PATTERN+='|(^|/)build\.sbt$'
-SCA_PATTERN+='|(^|/)mix\.(exs|lock)$'
-SCA_PATTERN+='|(^|/)pubspec\.(yaml|lock)$'
+[ -f "$MARKER_FILE" ] && exit 0
 
-IAC_FILES=$(echo "$CHANGED" | grep -E "$IAC_PATTERN" || true)
-SCA_FILES=$(echo "$CHANGED" | grep -E "$SCA_PATTERN" || true)
-
-# Exit silently if no relevant files
-[ -z "$IAC_FILES" ] && [ -z "$SCA_FILES" ] && exit 0
+# Get scan directory from cwd in hook input
+SCAN_PATH=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+[ -z "$SCAN_PATH" ] && SCAN_PATH=$(echo "$CHANGED" | head -1 | xargs dirname)
 
 PIDS=()
-SCAN_TYPE=""
+SCAN_TYPE="IaC+SCA"
 
-# Launch IaC scan if infra files changed
-if [ -n "$IAC_FILES" ]; then
-  SCAN_PATH=$(echo "$IAC_FILES" | head -1 | xargs dirname)
-  SCAN_TYPE="IaC"
-  # --upload=false: skip uploading to Lacework cloud
-  # --quiet: suppress logging noise
-  # --save-result: direct file output (still outputs to stdout, so redirect to /dev/null)
-  lacework iac scan --format json --upload=false --quiet \
-    --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>&1 &
-  PIDS+=($!)
-fi
+# Launch both IaC and SCA scans in parallel
+lacework iac scan --upload=false --noninteractive \
+  --format json --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>&1 &
+PIDS+=($!)
 
-# Launch SCA scan if manifest files changed (with caching)
-SCA_MANIFEST=""
-SCA_HASH=""
-if [ -n "$SCA_FILES" ]; then
-  MANIFEST=$(echo "$SCA_FILES" | head -1)
-  HASH=$(sha256sum "$MANIFEST" 2>/dev/null | cut -d' ' -f1)
-  # macOS fallback
-  if [ -z "$HASH" ]; then
-    HASH=$(shasum -a 256 "$MANIFEST" 2>/dev/null | cut -d' ' -f1)
-  fi
-  CACHE_DIR="$HOME/.lacework/cache"
-  mkdir -p "$CACHE_DIR"
-  if [ -n "$HASH" ] && [ -f "$CACHE_DIR/$HASH" ]; then
-    # Cache hit - skip SCA scan silently
-    :
-  else
-    SCAN_PATH=$(echo "$SCA_FILES" | head -1 | xargs dirname)
-    [ -n "$SCAN_TYPE" ] && SCAN_TYPE="IaC+SCA" || SCAN_TYPE="SCA"
-    # --quiet: suppress logging noise
-    # -f lw-json: Lacework JSON format
-    # -o: output to file
-    lacework sca scan --quiet -f lw-json -o "$SCAN_TMPDIR/sca.json" "$SCAN_PATH" 2>/dev/null &
-    PIDS+=($!)
-    SCA_MANIFEST="$MANIFEST"
-    SCA_HASH="$HASH"
-  fi
-fi
-
-[ ${#PIDS[@]} -eq 0 ] && exit 0
+lacework sca scan "$SCAN_PATH" --deployment=offprem --noninteractive --save-results=false \
+  -f lw-json -o "$SCAN_TMPDIR/sca.json" 2>/dev/null &
+PIDS+=($!)
 
 # Wait for all scans
 for PID in "${PIDS[@]}"; do wait "$PID"; done
-
-# Cache SCA manifest hash on success
-[ -n "$SCA_HASH" ] && touch "$HOME/.lacework/cache/$SCA_HASH"
 
 # Aggregate findings and extract details
 CRITICAL_COUNT=0
@@ -150,21 +111,23 @@ done
 
 TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
 
-# Output JSON with findings list and actionable instructions for Claude
+# Output findings and control exit code
 if [ "$TOTAL_SEVERE" -gt 0 ]; then
-  # Read findings and escape for JSON
-  FINDINGS_LIST=$(cat "$FINDINGS_FILE" | sed 's/"/\\"/g' | sed 's/$/\\n/' | tr -d '\n')
+  FINDINGS_TEXT=$(cat "$FINDINGS_FILE")
+  MESSAGE="## Fortinet $SCAN_TYPE Security Scan
 
-  SUMMARY="**Summary:** ${CRITICAL_COUNT} Critical, ${HIGH_COUNT} High severity issues"
-  INSTRUCTION="**ACTION REQUIRED:** Fix these security issues OR ask user to add exceptions for specific findings."
+**Summary:** ${CRITICAL_COUNT} Critical, ${HIGH_COUNT} High severity issues
 
-  MSG="## Fortinet $SCAN_TYPE Security Scan\\n\\n${SUMMARY}\\n\\n${FINDINGS_LIST}${INSTRUCTION}"
+$FINDINGS_TEXT
 
-  echo "{\"systemMessage\": \"$MSG\", \"continue\": true}"
-elif [ "$MEDIUM_COUNT" -gt 0 ]; then
-  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: $MEDIUM_COUNT medium severity issues (informational)\", \"continue\": true}"
-else
-  echo "{\"systemMessage\": \"Fortinet $SCAN_TYPE Security: No issues found\", \"continue\": true}"
+**ACTION REQUIRED:** Fix these security issues OR ask user to add exceptions for specific findings."
+
+  # Mark these files as scanned to prevent re-scanning loop
+  touch "$MARKER_FILE"
+
+  # Output to stderr so Claude sees findings, exit 2 to block and wait for user action
+  echo "$MESSAGE" >&2
+  exit 2
 fi
 
 exit 0
