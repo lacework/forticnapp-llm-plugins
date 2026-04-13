@@ -123,13 +123,11 @@ jobs:
           jq --arg v "$V" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
           # Update marketplace.json
           jq --arg v "$V" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
-          # Update REQUIRED_VERSION in session-start.sh
-          sed -i "s/^REQUIRED_VERSION=.*/REQUIRED_VERSION=\"$V\"/" hooks/session-start.sh
 
       - name: Commit version bump and tag
         run: |
           V="${{ steps.target.outputs.version }}"
-          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/session-start.sh
+          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
           git commit -m "chore: release v${V} [skip ci]"
           git push
           git tag "v${V}"
