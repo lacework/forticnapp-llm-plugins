@@ -7,7 +7,7 @@ set -euo pipefail
 PASS=0
 FAIL=0
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HOOK="$PLUGIN_ROOT/hooks/stop.sh"
+HOOK="$PLUGIN_ROOT/scripts/stop.sh"
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
