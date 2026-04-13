@@ -1,22 +1,12 @@
 {
   "description": "Fortinet Code Security hooks for IaC and SCA scanning",
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/stop.sh",
             "timeout": 120
           }
         ]

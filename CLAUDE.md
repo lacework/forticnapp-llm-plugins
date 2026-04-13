@@ -10,28 +10,29 @@ This is a **Claude Code plugin** that integrates Fortinet Code Security (IaC and
 
 ### Run tests
 ```bash
-bash tests/test-session-start.sh   # Test session-start hook logic
 bash tests/test-stop.sh            # Test stop hook logic
 ```
 
 ### Install plugin locally for development
 ```bash
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-
 claude plugin marketplace add $PWD
 claude plugin install code-security@fortinet-plugins
 ```
 
+### Run setup (after installing plugin)
+```bash
+export LW_ACCOUNT="your-account.lacework.net"
+export LW_API_KEY="your-api-key"
+export LW_API_SECRET="your-api-secret"
+export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
+# Then run /fortinet-setup in Claude Code, or directly:
+bash scripts/install-lw.sh
+```
+
 ### Test hooks manually
 ```bash
-# Session start (first-time setup)
-export CLAUDE_PLUGIN_DATA="$HOME/.claude/plugins/fortinet-code-security-plugin/data"
-export LW_ACCOUNT="lacework.lacework.net"
-bash hooks/session-start.sh
-
 # Stop hook (scan simulation)
-echo '{"transcript":[{"tool_uses":[{"tool_name":"Write","tool_input":{"file_path":"tests/fixtures/vulnerable.tf"}}]}]}' | bash hooks/stop.sh
+echo '{"transcript":[{"tool_uses":[{"tool_name":"Write","tool_input":{"file_path":"tests/fixtures/vulnerable.tf"}}]}]}' | bash scripts/stop.sh
 ```
 
 ## Architecture
@@ -40,29 +41,29 @@ echo '{"transcript":[{"tool_uses":[{"tool_name":"Write","tool_input":{"file_path
 ```
 .claude-plugin/plugin.json  # Plugin manifest (name: "code-security", version, hook registration)
 hooks/
-  session-start.sh          # Runs on SessionStart: installs jq, Lacework CLI, configures credentials
-  stop.sh                   # Runs on Stop: routes files to IaC/SCA scanners, aggregates findings
+  hooks.json                # Hook registration (Stop hook only)
 scripts/
-  install-lw.sh             # Reusable Lacework CLI installer (can be sourced or run directly)
+  install-lw.sh             # Full setup: installs jq, Lacework CLI, configures credentials, installs components
+  stop.sh                   # Runs on Stop: routes files to IaC/SCA scanners, aggregates findings
 skills/
+  fortinet-setup/SKILL.md   # Defines /fortinet-setup slash command for CLI installation & configuration
   fortinet-review/SKILL.md  # Defines /fortinet-review slash command
 tests/
   fixtures/                 # Intentionally vulnerable files for testing scanners
 ```
 
 ### Hook Flow
-1. **SessionStart** (`session-start.sh`): Idempotent setup — checks version marker, installs dependencies (jq, lacework CLI), configures credentials, installs iac/sca components. Checks for plugin updates via GitHub API (3s timeout).
+1. **Setup** (`/fortinet-setup` → `scripts/install-lw.sh`): User-initiated setup — installs jq, Lacework CLI, configures credentials, installs IaC/SCA components. Idempotent (skips already-installed steps).
 
-2. **Stop** (`stop.sh`): Reads session JSON from stdin, extracts changed files from `Write`/`Edit`/`MultiEdit` tool uses, routes to scanners:
+2. **Stop** (`scripts/stop.sh`): Reads session JSON from stdin, extracts changed files from `Write`/`Edit`/`MultiEdit` tool uses, routes to scanners:
    - IaC files (`.tf`, `.bicep`, k8s paths, etc.) → `lacework iac scan`
    - SCA manifests (`package.json`, `go.mod`, etc.) → `lacework sca scan` (with SHA-256 caching)
    - Both scan types run in parallel when applicable
    - Exit code 2 triggers Claude auto-remediation for critical/high findings
 
 ### Version Management
-- Version stored in both `.claude-plugin/plugin.json` and `REQUIRED_VERSION` in `session-start.sh`
+- Version stored in `.claude-plugin/plugin.json`
 - GitHub Actions workflow (`release.yml`) auto-bumps version based on conventional commits
-- Version mismatch between installed marker and `REQUIRED_VERSION` triggers re-install
 
 ## Key Patterns
 
