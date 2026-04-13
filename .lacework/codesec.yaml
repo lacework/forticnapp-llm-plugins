@@ -1,0 +1,10 @@
+# Fortinet Code Security scan configuration
+default:
+    iac:
+        scan:
+            exceptions:
+                - "path:tests/fixtures/*:Intentionally vulnerable test fixtures"
+    sca:
+        scan:
+            exceptions:
+                - "path:tests/fixtures/*:Intentionally vulnerable test fixtures"

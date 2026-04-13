@@ -81,8 +81,8 @@ for SCANNER in iac sca; do
   MEDIUM_COUNT=$((MEDIUM_COUNT + MED))
 
   # Extract critical and high FAILED findings with full details
-  # Uses correct field names: filePath, line, resource, title, description
-  while IFS='§' read -r sev title resource file_path line_num desc; do
+  # Includes policyId (IaC) and cveId (SCA) for exception management
+  while IFS='§' read -r sev title resource file_path line_num desc policy_id cve_id; do
     [ -z "$sev" ] && continue
     FINDING_NUM=$((FINDING_NUM + 1))
 
@@ -105,8 +105,16 @@ for SCANNER in iac sca; do
     echo "   - Resource: \`${resource}\`" >> "$FINDINGS_FILE"
     echo "   - Location: \`${loc}\`" >> "$FINDINGS_FILE"
     echo "   - ${desc}" >> "$FINDINGS_FILE"
+
+    # Include exception identifier for IaC (policyId) or SCA (cveId)
+    if [ "$SCANNER" = "iac" ] && [ -n "$policy_id" ] && [ "$policy_id" != "null" ]; then
+      echo "   - Exception ID: \`${policy_id}\`" >> "$FINDINGS_FILE"
+    elif [ "$SCANNER" = "sca" ] && [ -n "$cve_id" ] && [ "$cve_id" != "null" ]; then
+      echo "   - Exception ID: \`CVE:${cve_id}\`" >> "$FINDINGS_FILE"
+    fi
+
     echo "" >> "$FINDINGS_FILE"
-  done < <(jq -r '.findings[]? | select(.pass==false and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\(.description // "")"' "$FILE" 2>/dev/null)
+  done < <(jq -r '.findings[]? | select(.pass==false and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\(.description // "")§\(.policyId // "")§\(.cveId // "")"' "$FILE" 2>/dev/null)
 done
 
 TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
@@ -114,13 +122,51 @@ TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
 # Output findings and control exit code
 if [ "$TOTAL_SEVERE" -gt 0 ]; then
   FINDINGS_TEXT=$(cat "$FINDINGS_FILE")
+
+  # Check if codesec.yaml already exists
+  CODESEC_FILE="${SCAN_PATH}/.lacework/codesec.yaml"
+  if [ -f "$CODESEC_FILE" ]; then
+    CODESEC_STATUS="The file \`.lacework/codesec.yaml\` already exists. Add exception IDs to the appropriate \`exceptions\` list."
+  else
+    CODESEC_STATUS="The file \`.lacework/codesec.yaml\` does not exist yet. Create it at \`.lacework/codesec.yaml\` with the structure shown below."
+  fi
+
   MESSAGE="## Fortinet $SCAN_TYPE Security Scan
 
 **Summary:** ${CRITICAL_COUNT} Critical, ${HIGH_COUNT} High severity issues
 
 $FINDINGS_TEXT
+---
 
-**ACTION REQUIRED:** Fix these security issues OR ask user to add exceptions for specific findings."
+**ACTION REQUIRED:** For each finding above, ask the user whether to:
+
+1. **Fix** the security issue in code, OR
+2. **Add exception** using the Exception ID shown for each finding
+
+**How to add exceptions:** ${CODESEC_STATUS}
+
+Exception formats (both IaC and SCA support these):
+- **By policy/CVE ID:** \`<policy-id>\` (e.g. \`lacework-iac-aws-security-3\`) or \`CVE:<cve-id>:<reason>\`
+- **By path:** \`path:<glob-pattern>:<reason>\` (e.g. \`path:tests/fixtures/*:Test fixtures\`)
+
+Add to \`default.iac.scan.exceptions\` for IaC findings, \`default.sca.scan.exceptions\` for SCA findings.
+
+\`\`\`yaml
+# .lacework/codesec.yaml
+default:
+    iac:
+        scan:
+            exceptions:
+                - <policy-id>
+                - \"path:<glob-pattern>:<reason>\"
+    sca:
+        scan:
+            exceptions:
+                - \"CVE:<cve-id>:<reason>\"
+                - \"path:<glob-pattern>:<reason>\"
+\`\`\`
+
+**Important:** Only add exceptions the user explicitly approves. Do not auto-suppress findings."
 
   # Mark these files as scanned to prevent re-scanning loop
   touch "$MARKER_FILE"
