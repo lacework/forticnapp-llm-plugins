@@ -4,7 +4,7 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ## Features
 
-- **Zero setup**: Lacework CLI and components install automatically on first session
+- **Easy setup**: Run `/fortinet-setup` to install and configure the Lacework CLI and scanning components
 - **Auto-remediation**: Critical/high findings trigger Claude to fix issues without prompting
 - **Parallel scanning**: IaC and SCA scans run simultaneously to minimize wait time
 - **Smart scoping**: Only scans files changed in the current task, not the whole repo
@@ -21,12 +21,9 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ### Installation
 
-Set your Lacework API credentials, then download and install the plugin:
+Download and install the plugin:
 
 ```bash
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-
 # Download and extract (latest version)
 gh release download -R lacework-dev/fortinet-code-security-plugin -A zip
 unzip -o fortinet-code-security-plugin-*.zip
@@ -44,7 +41,18 @@ claude plugin install code-security@fortinet-plugins
 
 Available versions are listed on the [Releases](../../releases) page.
 
-The plugin is pre-configured with a shared service account (`lacework.lacework.net`). On first session start it installs all dependencies and writes credentials to `~/.lacework.toml` with `chmod 600` — no further setup required.
+### Setup
+
+After installing, set your Lacework credentials and run the setup skill:
+
+```bash
+export LW_ACCOUNT="your-account.lacework.net"
+export LW_API_KEY="your-api-key"
+export LW_API_SECRET="your-api-secret"
+export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
+```
+
+Then run `/fortinet-setup` in Claude Code. This installs the Lacework CLI, configures credentials, and installs the IaC and SCA scanning components.
 
 > For credential distribution options, see [Credential Strategy](#credential-strategy).
 
@@ -115,21 +123,24 @@ After every Claude Code task completes:
 
 ### Slash Commands
 
+#### `/fortinet-setup`
+Installs and configures the Lacework CLI with IaC and SCA scanning components. Checks for required environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`) and optionally `LW_SUBACCOUNT` for multi-tenant accounts.
+
 #### `/fortinet-review`
 Runs a security scan on IaC and dependency files in the current directory. Detects file types automatically and runs appropriate scanners (IaC, SCA, or both). Produces a unified report grouped by severity with remediation recommendations.
 
 ## Session Lifecycle
 
 ```
-Claude Code session starts
-  └─> session-start.sh fires
-        └─> Already installed? → exit 0 in <100ms
-        └─> First time? → Install CLI, components, write credentials
+First time setup
+  └─> User runs /fortinet-setup
+        └─> scripts/install-lw.sh runs
+        └─> Installs jq, Lacework CLI, configures credentials, installs components
 
 Developer prompts Claude → Claude writes/edits files
 
 Claude Code task completes
-  └─> stop.sh fires
+  └─> scripts/stop.sh fires
         └─> No changed files? → exit 0 (silent)
         └─> IaC files changed? → lacework iac scan &
         └─> Manifest files changed? → lacework sca scan & (or cache hit)
@@ -144,7 +155,7 @@ Phase 1 uses a shared service account. Two distribution options are available:
 
 | Option | How it works | Recommendation |
 |---|---|---|
-| **A: Shell env vars** | Add `LW_API_KEY` and `LW_API_SECRET` to `~/.zshrc`. Plugin interpolates at install time. | Preferred — credentials not in version control |
+| **A: Shell env vars** | Add `LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET` (and optionally `LW_SUBACCOUNT`) to `~/.zshrc`. `/fortinet-setup` reads them at setup time. | Preferred — credentials not in version control |
 | **B: Baked-in key** | Credentials hardcoded in `plugin.json`. Distributed with the plugin. | Use only for fully internal, air-gapped environments |
 
 The shared service account MUST be scoped to the Code Security product.
@@ -157,9 +168,6 @@ The shared service account MUST be scoped to the Code Security product.
 git clone git@github.com:lacework-dev/fortinet-code-security-plugin.git
 cd fortinet-code-security-plugin
 
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-
 # Register marketplace and install
 claude plugin marketplace add $PWD
 claude plugin install code-security@fortinet-plugins
@@ -171,21 +179,17 @@ claude plugin install code-security@fortinet-plugins
 > claude plugin install code-security@fortinet-plugins
 > ```
 
-### 2. Test the SessionStart hook directly
+### 2. Run setup
+
+Set your credentials and run `/fortinet-setup` in Claude Code, or run the script directly:
 
 ```bash
-export CLAUDE_PLUGIN_DATA="$HOME/.claude/plugins/fortinet-code-security-plugin/data"
-export LW_ACCOUNT="lacework.lacework.net"
+export LW_ACCOUNT="your-account.lacework.net"
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
+export LW_SUBACCOUNT="your-subaccount"  # optional
 
-bash hooks/session-start.sh
-```
-
-Run it a second time to verify the warm-session fast-exit and update check:
-
-```bash
-bash hooks/session-start.sh
+bash scripts/install-lw.sh
 ```
 
 ### 3. Test the Stop hook directly
@@ -201,7 +205,7 @@ echo '{
       "tool_input": { "file_path": "tests/fixtures/vulnerable.tf" }
     }]
   }]
-}' | bash hooks/stop.sh
+}' | bash scripts/stop.sh
 ```
 
 **SCA scan (package.json):**
@@ -213,7 +217,7 @@ echo '{
       "tool_input": { "file_path": "tests/fixtures/vulnerable-package.json" }
     }]
   }]
-}' | bash hooks/stop.sh
+}' | bash scripts/stop.sh
 ```
 
 **Both scanners in parallel:**
@@ -225,7 +229,7 @@ echo '{
       { "tool_name": "Write", "tool_input": { "file_path": "tests/fixtures/vulnerable-package.json" } }
     ]
   }]
-}' | bash hooks/stop.sh
+}' | bash scripts/stop.sh
 ```
 
 **No scan (source files only):**
@@ -237,17 +241,13 @@ echo '{
       "tool_input": { "file_path": "src/app.py" }
     }]
   }]
-}' | bash hooks/stop.sh
+}' | bash scripts/stop.sh
 echo "Exit code: $?"
 ```
 
 ### 4. Run the automated test suite
 
 ```bash
-# Test session-start.sh logic
-bash tests/test-session-start.sh
-
-# Test stop.sh logic
 bash tests/test-stop.sh
 ```
 
