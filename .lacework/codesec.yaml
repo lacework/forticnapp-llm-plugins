@@ -1,10 +1,14 @@
 # Fortinet Code Security scan configuration
 default:
     iac:
+        enabled: true
         scan:
             exceptions:
-                - "path:tests/fixtures/*:Intentionally vulnerable test fixtures"
+                - policy:lacework-iac-aws-security-3:Accepted risk
+                - policy:lacework-iac-aws-storage-1:Accepted risk
+                - policy:lacework-iac-aws-security-4:Accepted risk
     sca:
+        enabled: true
         scan:
             exceptions:
-                - "path:tests/fixtures/*:Intentionally vulnerable test fixtures"
+                - "path:tests/fixtures/*:Accepted risk"

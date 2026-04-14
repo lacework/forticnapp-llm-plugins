@@ -145,9 +145,10 @@ $FINDINGS_TEXT
 
 **How to add exceptions:** ${CODESEC_STATUS}
 
-Exception formats (both IaC and SCA support these):
-- **By policy/CVE ID:** \`<policy-id>\` (e.g. \`lacework-iac-aws-security-3\`) or \`CVE:<cve-id>:<reason>\`
-- **By path:** \`path:<glob-pattern>:<reason>\` (e.g. \`path:tests/fixtures/*:Test fixtures\`)
+Exception format: \`<criteria>:<value>:<reason>\`
+
+**Criteria** (case-sensitive): \`policy\`, \`CVE\`, \`CWE\`, \`path\`, \`file\`, \`fingerprint\`, \`finding\`
+**Reasons** (case-sensitive): \`Accepted risk\`, \`Compensating Controls\`, \`False positive\`, \`Patch incoming\`
 
 Add to \`default.iac.scan.exceptions\` for IaC findings, \`default.sca.scan.exceptions\` for SCA findings.
 
@@ -155,15 +156,19 @@ Add to \`default.iac.scan.exceptions\` for IaC findings, \`default.sca.scan.exce
 # .lacework/codesec.yaml
 default:
     iac:
+        enabled: true
         scan:
             exceptions:
-                - <policy-id>
+                - \"policy:<policy-id>:<reason>\"
                 - \"path:<glob-pattern>:<reason>\"
+                - \"file:<file-path>:<reason>\"
     sca:
+        enabled: true
         scan:
             exceptions:
                 - \"CVE:<cve-id>:<reason>\"
                 - \"path:<glob-pattern>:<reason>\"
+                - \"CWE:<cwe-id>:<reason>\"
 \`\`\`
 
 **Important:** Only add exceptions the user explicitly approves. Do not auto-suppress findings."
