@@ -1,5 +1,5 @@
 ---
-name: fortinet-review
+name: fortinet:code-review
 description: Run Fortinet Code Security IaC and SCA scans on the current directory
 user-invocable: true
 ---

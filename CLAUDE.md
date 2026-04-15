@@ -25,7 +25,7 @@ export LW_ACCOUNT="your-account.lacework.net"
 export LW_API_KEY="your-api-key"
 export LW_API_SECRET="your-api-secret"
 export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
-# Then run /fortinet-setup in Claude Code, or directly:
+# Then run /fortinet:cli-setup in Claude Code, or directly:
 bash scripts/install-lw.sh
 ```
 
@@ -46,14 +46,14 @@ scripts/
   install-lw.sh             # Full setup: installs jq, Lacework CLI, configures credentials, installs components
   stop.sh                   # Runs on Stop: routes files to IaC/SCA scanners, aggregates findings
 skills/
-  fortinet-setup/SKILL.md   # Defines /fortinet-setup slash command for CLI installation & configuration
-  fortinet-review/SKILL.md  # Defines /fortinet-review slash command
+  fortinet:cli-setup/SKILL.md   # Defines /fortinet:cli-setup slash command for CLI installation & configuration
+  fortinet:code-review/SKILL.md  # Defines /fortinet:code-review slash command
 tests/
   fixtures/                 # Intentionally vulnerable files for testing scanners
 ```
 
 ### Hook Flow
-1. **Setup** (`/fortinet-setup` → `scripts/install-lw.sh`): User-initiated setup — installs jq, Lacework CLI, configures credentials, installs IaC/SCA components. Idempotent (skips already-installed steps).
+1. **Setup** (`/fortinet:cli-setup` → `scripts/install-lw.sh`): User-initiated setup — installs jq, Lacework CLI, configures credentials, installs IaC/SCA components. Idempotent (skips already-installed steps).
 
 2. **Stop** (`scripts/stop.sh`): Reads session JSON from stdin, extracts changed files from `Write`/`Edit`/`MultiEdit` tool uses, routes to scanners:
    - IaC files (`.tf`, `.bicep`, k8s paths, etc.) → `lacework iac scan`

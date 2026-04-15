@@ -1,5 +1,5 @@
 ---
-name: fortinet-setup
+name: fortinet:cli-setup
 description: Install and configure the Lacework CLI with IaC and SCA scanning components
 user-invocable: true
 ---
@@ -32,7 +32,7 @@ export LW_API_SECRET="your-api-secret"
 export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
 ```
 
-Then ask them to run `/fortinet-setup` again.
+Then ask them to run `/fortinet:cli-setup` again.
 
 ## Output
 
@@ -41,4 +41,4 @@ Report a summary of what happened:
 - Which steps were performed
 - Final status: ready or failed (with error details)
 
-If everything succeeded, tell the user they can now use `/fortinet-review` to scan their code.
+If everything succeeded, tell the user they can now use `/fortinet:code-review` to scan their code.
