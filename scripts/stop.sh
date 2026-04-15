@@ -70,11 +70,11 @@ for SCANNER in iac sca; do
     continue
   fi
 
-  # Count only failed findings (pass == false)
+  # Count only failed, non-excepted findings (pass == false and isSuppressed == false)
   # Lacework uses capitalized severity values: "Critical", "High", "Medium"
-  CRIT=$(jq '[.findings[]? | select(.pass==false and .severity=="Critical")] | length' "$FILE" 2>/dev/null || echo 0)
-  HIGH=$(jq '[.findings[]? | select(.pass==false and .severity=="High")] | length' "$FILE" 2>/dev/null || echo 0)
-  MED=$(jq '[.findings[]? | select(.pass==false and .severity=="Medium")] | length' "$FILE" 2>/dev/null || echo 0)
+  CRIT=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Critical")] | length' "$FILE" 2>/dev/null || echo 0)
+  HIGH=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="High")] | length' "$FILE" 2>/dev/null || echo 0)
+  MED=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium")] | length' "$FILE" 2>/dev/null || echo 0)
 
   CRITICAL_COUNT=$((CRITICAL_COUNT + CRIT))
   HIGH_COUNT=$((HIGH_COUNT + HIGH))
@@ -114,7 +114,7 @@ for SCANNER in iac sca; do
     fi
 
     echo "" >> "$FINDINGS_FILE"
-  done < <(jq -r '.findings[]? | select(.pass==false and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\(.description // "")§\(.policyId // "")§\(.cveId // "")"' "$FILE" 2>/dev/null)
+  done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\(.description // "")§\(.policyId // "")§\(.cveId // "")"' "$FILE" 2>/dev/null)
 done
 
 TOTAL_SEVERE=$((CRITICAL_COUNT + HIGH_COUNT))
