@@ -57,9 +57,16 @@ tests/
 
 2. **Stop** (`scripts/stop.sh`): Reads session JSON from stdin, extracts changed files from `Write`/`Edit`/`MultiEdit` tool uses, routes to scanners:
    - IaC files (`.tf`, `.bicep`, k8s paths, etc.) → `lacework iac scan`
-   - SCA manifests (`package.json`, `go.mod`, etc.) → `lacework sca scan` (with SHA-256 caching)
+   - SCA manifests (`package.json`, `go.mod`, etc.) → `lacework sca scan`
    - Both scan types run in parallel when applicable
+   - Findings with `isSuppressed==true` (exceptions in `.lacework/codesec.yaml`) are excluded
    - Exit code 2 triggers Claude auto-remediation for critical/high findings
+
+### Exception Format
+Exceptions in `.lacework/codesec.yaml` use the format `<criteria>:<value>:<reason>`:
+- **Criteria** (case-sensitive): `policy`, `CVE`, `CWE`, `path`, `file`, `fingerprint`, `finding`
+- **Reasons** (case-sensitive): `Accepted risk`, `Compensating Controls`, `False positive`, `Patch incoming`
+- Example: `policy:lacework-iac-aws-security-3:Accepted risk`
 
 ### Version Management
 - Version stored in `.claude-plugin/plugin.json`
@@ -69,7 +76,8 @@ tests/
 
 - **File routing**: `stop.sh` uses regex patterns (`IAC_PATTERN`, `SCA_PATTERN`) to classify changed files
 - **Parallel execution**: Scans run as background processes, PIDs collected, waited on together
-- **SCA caching**: Manifest hash stored in `~/.lacework/cache/` to skip unchanged dependencies
+- **Scan loop prevention**: After scanning, a marker file (SHA-256 hash of transcript path + changed file paths) is created in `~/.lacework/scan-markers/`. If the stop hook fires again for the same changes in the same session, it exits immediately. This prevents infinite loops where: scan finds issues → exit 2 triggers auto-remediation → Claude edits files → stop hook fires again → repeat. The hash MUST include the transcript path (unique per session) so that editing the same files in a different session triggers a fresh scan.
+- **Finding filtering**: Only findings with `pass==false` AND `isSuppressed!=true` are counted and reported. Suppressed findings have exceptions configured in `.lacework/codesec.yaml`.
 - **Exit codes**: 0 = clean/medium-low findings, 2 = critical/high findings (triggers remediation)
 - **Output routing**: Critical findings → stderr (visible to Claude), informational → stdout
 
