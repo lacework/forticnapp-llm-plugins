@@ -27,7 +27,7 @@ CHANGED=$(cat "$TRANSCRIPT_PATH" | jq -r '
 # Track scanned files to avoid re-scanning same changes (prevents loop)
 SCAN_MARKER_DIR="$HOME/.lacework/scan-markers"
 mkdir -p "$SCAN_MARKER_DIR"
-CHANGES_HASH=$(echo "$CHANGED" | sha256sum 2>/dev/null | cut -d' ' -f1 || shasum -a 256 2>/dev/null | cut -d' ' -f1)
+CHANGES_HASH=$(echo "${TRANSCRIPT_PATH}:${CHANGED}" | sha256sum 2>/dev/null | cut -d' ' -f1 || echo "${TRANSCRIPT_PATH}:${CHANGED}" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
 MARKER_FILE="$SCAN_MARKER_DIR/$CHANGES_HASH"
 
 [ -f "$MARKER_FILE" ] && exit 0
