@@ -1,6 +1,6 @@
 #!/bin/bash
 # test-stop-integration.sh — Integration test for stop.sh with real Lacework scans
-# Requires: Lacework CLI installed and configured (run /fortinet-setup first)
+# Requires: Lacework CLI installed and configured (run /fortinet:cli-setup first)
 # Usage: bash tests/test-stop-integration.sh
 
 set -uo pipefail
@@ -19,7 +19,7 @@ echo ""
 
 # Check prerequisites
 if ! command -v lacework &>/dev/null; then
-  echo "SKIP: Lacework CLI not installed. Run /fortinet-setup first."
+  echo "SKIP: Lacework CLI not installed. Run /fortinet:cli-setup first."
   exit 0
 fi
 
@@ -41,26 +41,33 @@ HOOK_INPUT=$(jq -n \
   --arg cwd "$PLUGIN_ROOT" \
   '{transcript_path: $tp, cwd: $cwd}')
 
-echo "--- T-INT-01: Hook produces findings with Exception IDs ---"
+echo "--- T-INT-01: Changed file with findings — blocks with exit 2 ---"
 OUTPUT_STDERR="$TMPDIR/stderr.txt"
 OUTPUT_STDOUT="$TMPDIR/stdout.txt"
 echo "$HOOK_INPUT" | bash "$HOOK" >"$OUTPUT_STDOUT" 2>"$OUTPUT_STDERR"
 EXIT=$?
 
-# Should exit 2 (critical/high findings found)
+STDERR_OUT=$(cat "$OUTPUT_STDERR")
+
+# Should exit 2 (critical/high findings in changed files)
 if [ "$EXIT" -eq 2 ]; then
-  pass "Exit code is 2 (critical/high findings detected)"
+  pass "Exit code is 2 (critical/high findings in changed files)"
 else
   fail "Expected exit code 2, got $EXIT"
 fi
 
-STDERR_OUT=$(cat "$OUTPUT_STDERR")
-
-# Should contain the summary line
-if echo "$STDERR_OUT" | grep -q "Critical.*High severity issues"; then
-  pass "Summary line present with severity counts"
+# Should show "Issues in your changed files"
+if echo "$STDERR_OUT" | grep -q "Issues in your changed files"; then
+  pass "Output shows 'Issues in your changed files' section"
 else
-  fail "Summary line missing"
+  fail "Missing 'Issues in your changed files' section"
+fi
+
+# Should list the scanned file
+if echo "$STDERR_OUT" | grep -q "vulnerable.tf"; then
+  pass "Output lists scanned file (vulnerable.tf)"
+else
+  fail "Missing scanned file in output"
 fi
 
 # Should contain Exception ID for IaC findings
@@ -70,39 +77,31 @@ else
   fail "IaC findings missing Exception ID"
 fi
 
-# Should contain the codesec.yaml instructions
+# Should contain the codesec.yaml internal instructions
 if echo "$STDERR_OUT" | grep -q "codesec.yaml"; then
   pass "Output contains codesec.yaml reference"
 else
   fail "Output missing codesec.yaml instructions"
 fi
 
-# Should contain exception instructions for IaC
+# Should contain exception instructions for IaC and SCA
 if echo "$STDERR_OUT" | grep -q "default.iac.scan.exceptions"; then
   pass "Output contains IaC exception instructions"
 else
   fail "Output missing IaC exception instructions"
 fi
 
-# Should contain exception instructions for SCA
 if echo "$STDERR_OUT" | grep -q "default.sca.scan.exceptions"; then
   pass "Output contains SCA exception instructions"
 else
   fail "Output missing SCA exception instructions"
 fi
 
-# Should tell Claude to ask the user
-if echo "$STDERR_OUT" | grep -q "ask the user"; then
-  pass "Output instructs Claude to ask user before adding exceptions"
+# Should require user approval
+if echo "$STDERR_OUT" | grep -q "user explicitly approves"; then
+  pass "Output instructs Claude to get user approval before adding exceptions"
 else
   fail "Output missing user-approval instruction"
-fi
-
-# Should contain the YAML example block
-if echo "$STDERR_OUT" | grep -q "exceptions:"; then
-  pass "Output contains YAML example with exceptions field"
-else
-  fail "Output missing YAML example"
 fi
 
 # Should warn not to auto-suppress
@@ -134,14 +133,12 @@ else
   fail "Missing expected high finding lacework-iac-aws-security-4"
 fi
 
-# T-INT-03: Test that codesec.yaml existence is detected
+# T-INT-03: codesec.yaml existence detection
 echo ""
 echo "--- T-INT-03: codesec.yaml existence detection ---"
 
-# Clean markers again for a fresh run
 rm -rf "$HOME/.lacework/scan-markers"
 
-# Create a fake .lacework/codesec.yaml
 mkdir -p "$PLUGIN_ROOT/.lacework"
 touch "$PLUGIN_ROOT/.lacework/codesec.yaml"
 
@@ -154,12 +151,11 @@ else
   fail "Does not detect existing codesec.yaml"
 fi
 
-# Clean up the fake codesec.yaml
 rm -f "$PLUGIN_ROOT/.lacework/codesec.yaml"
 rmdir "$PLUGIN_ROOT/.lacework" 2>/dev/null || true
 
-# Clean markers again and test without codesec.yaml
 rm -rf "$HOME/.lacework/scan-markers"
+mkdir -p "$HOME/.lacework/scan-markers"
 
 OUTPUT_STDERR3="$TMPDIR/stderr3.txt"
 echo "$HOOK_INPUT" | bash "$HOOK" >/dev/null 2>"$OUTPUT_STDERR3"
@@ -168,6 +164,54 @@ if grep -q "does not exist yet" "$OUTPUT_STDERR3"; then
   pass "Reports codesec.yaml does not exist when absent"
 else
   fail "Does not report missing codesec.yaml"
+fi
+
+# T-INT-04: Changed file with NO findings — should exit 0 and show FYI
+echo ""
+echo "--- T-INT-04: Changed file with no findings — non-blocking ---"
+
+rm -rf "$HOME/.lacework/scan-markers"
+mkdir -p "$HOME/.lacework/scan-markers"
+
+# Create transcript that only edits README.md (no security findings in it)
+TRANSCRIPT_CLEAN="$TMPDIR/transcript_clean.jsonl"
+cat > "$TRANSCRIPT_CLEAN" <<EOF
+{"message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$PLUGIN_ROOT/README.md"}}]}}
+EOF
+
+HOOK_INPUT_CLEAN=$(jq -n \
+  --arg tp "$TRANSCRIPT_CLEAN" \
+  --arg cwd "$PLUGIN_ROOT" \
+  '{transcript_path: $tp, cwd: $cwd}')
+
+OUTPUT_STDERR4="$TMPDIR/stderr4.txt"
+echo "$HOOK_INPUT_CLEAN" | bash "$HOOK" >/dev/null 2>"$OUTPUT_STDERR4"
+EXIT_CLEAN=$?
+
+STDERR_CLEAN=$(cat "$OUTPUT_STDERR4")
+
+if [ "$EXIT_CLEAN" -eq 0 ]; then
+  pass "Exit code is 0 (no findings in changed files — non-blocking)"
+else
+  fail "Expected exit code 0, got $EXIT_CLEAN"
+fi
+
+if echo "$STDERR_CLEAN" | grep -q "No security issues found in your changed files"; then
+  pass "Output says no issues in changed files"
+else
+  fail "Missing 'No security issues' message"
+fi
+
+if echo "$STDERR_CLEAN" | grep -q "pre-existing"; then
+  pass "Output mentions pre-existing issues as FYI"
+else
+  fail "Missing pre-existing issues FYI"
+fi
+
+if echo "$STDERR_CLEAN" | grep -q "fortinet:code-review"; then
+  pass "Output suggests /fortinet:code-review for full report"
+else
+  fail "Missing /fortinet:code-review suggestion"
 fi
 
 echo ""
