@@ -41,10 +41,11 @@ echo '{"transcript":[{"tool_uses":[{"tool_name":"Write","tool_input":{"file_path
 ```
 .claude-plugin/plugin.json  # Plugin manifest (name: "code-security", version, hook registration)
 hooks/
-  hooks.json                # Hook registration (Stop hook only)
+  hooks.json                # Hook registration (Stop hook + PermissionRequest hook)
 scripts/
   install-lw.sh             # Full setup: installs jq, Lacework CLI, configures credentials, installs components
   stop.sh                   # Runs on Stop: routes files to IaC/SCA scanners, aggregates findings
+  approve-permissions.sh    # PermissionRequest hook: auto-approves known plugin commands (lacework, jq, brew, etc.)
 skills/
   fortinet:cli-setup/SKILL.md   # Defines /fortinet:cli-setup slash command for CLI installation & configuration
   fortinet:code-review/SKILL.md  # Defines /fortinet:code-review slash command
@@ -80,6 +81,7 @@ Exceptions in `.lacework/codesec.yaml` use the format `<criteria>:<value>:<reaso
 - **Finding filtering**: Only findings with `pass==false` AND `isSuppressed!=true` are counted and reported. Suppressed findings have exceptions configured in `.lacework/codesec.yaml`.
 - **Exit codes**: 0 = clean/medium-low findings, 2 = critical/high findings (triggers remediation)
 - **Output routing**: Critical findings → stderr (visible to Claude), informational → stdout
+- **Permission auto-approval**: A `PermissionRequest` hook (`scripts/approve-permissions.sh`) auto-approves known plugin commands so users aren't prompted every time. Approved commands: `lacework *`, plugin scripts, `jq`, `brew install/tap`, `sha256sum/shasum`. User `permissions.deny` rules still take precedence. When adding new Bash commands to the plugin, add matching patterns to `approve-permissions.sh` or users will be prompted.
 
 ## Releases
 
