@@ -49,9 +49,17 @@ fi
 log "Changed files: $(echo "$CHANGED" | tr '\n' ', ')"
 
 # Track scanned files to avoid re-scanning same changes (prevents loop)
+# Hash includes transcript path + file paths + file mtimes so content changes trigger re-scan
 SCAN_MARKER_DIR="$HOME/.lacework/scan-markers"
 mkdir -p "$SCAN_MARKER_DIR"
-CHANGES_HASH=$(echo "${TRANSCRIPT_PATH}:${CHANGED}" | sha256sum 2>/dev/null | cut -d' ' -f1 || echo "${TRANSCRIPT_PATH}:${CHANGED}" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+FILE_MTIMES=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [ -f "$f" ]; then
+    FILE_MTIMES="${FILE_MTIMES}:$(stat -f '%m' "$f" 2>/dev/null || stat -c '%Y' "$f" 2>/dev/null || echo "0")"
+  fi
+done <<< "$CHANGED"
+CHANGES_HASH=$(echo "${TRANSCRIPT_PATH}:${CHANGED}:${FILE_MTIMES}" | sha256sum 2>/dev/null | cut -d' ' -f1 || echo "${TRANSCRIPT_PATH}:${CHANGED}:${FILE_MTIMES}" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
 MARKER_FILE="$SCAN_MARKER_DIR/$CHANGES_HASH"
 
 if [ -f "$MARKER_FILE" ]; then
