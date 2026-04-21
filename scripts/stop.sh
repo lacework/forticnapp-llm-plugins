@@ -16,7 +16,7 @@ SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty')
 SESSION_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
 
 # Per-session log file: stop-hook-<session-id>.log
-LOG_FILE="$LOG_DIR/stop-hook-${SESSION_ID:-unknown}.log"
+LOG_FILE="$LOG_DIR/stop-hook-${SESSION_ID:-$(date '+%Y%m%d-%H%M%S')}.log"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
