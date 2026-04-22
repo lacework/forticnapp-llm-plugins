@@ -1,36 +1,19 @@
 #!/bin/bash
 # install-lw.sh — Idempotent Lacework CLI installer and configurator
-# Installs jq, Lacework CLI, configures credentials, and installs IaC/SCA components.
+# Installs jq, Lacework CLI, ensures credentials are configured, and installs IaC/SCA components.
 # Can be called directly or sourced.
 #
-# Required environment variables:
-#   LW_ACCOUNT    - Lacework account URL (e.g. lacework.lacework.net)
-#   LW_API_KEY    - Lacework API key
-#   LW_API_SECRET - Lacework API secret
-#
-# Optional environment variables:
-#   LW_SUBACCOUNT - Lacework subaccount (if using a multi-tenant account)
+# Credential resolution (in order):
+#   1. ~/.lacework.toml already exists → use it as-is
+#   2. LW_ACCOUNT + LW_API_KEY + LW_API_SECRET (+ optional LW_SUBACCOUNT) set →
+#      run `lacework configure --noninteractive`
+#   3. Interactive TTY → run `lacework configure` and let the CLI prompt
+#   4. Otherwise → error
 
 set -euo pipefail
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-
-check_env_vars() {
-  local missing=()
-  [ -z "${LW_ACCOUNT:-}" ]    && missing+=("LW_ACCOUNT")
-  [ -z "${LW_API_KEY:-}" ]    && missing+=("LW_API_KEY")
-  [ -z "${LW_API_SECRET:-}" ] && missing+=("LW_API_SECRET")
-
-  if [ ${#missing[@]} -gt 0 ]; then
-    echo "ERROR: Missing required environment variables: ${missing[*]}" >&2
-    echo "Set them before running setup:" >&2
-    for var in "${missing[@]}"; do
-      echo "  export $var=\"your-value\"" >&2
-    done
-    return 1
-  fi
-  return 0
-}
+LACEWORK_TOML="${HOME}/.lacework.toml"
 
 install_jq() {
   if command -v jq &>/dev/null; then
@@ -98,8 +81,8 @@ install_lacework_cli() {
   echo "Lacework CLI installed successfully" >&2
 }
 
-configure_lacework() {
-  echo "Configuring Lacework CLI..." >&2
+configure_lacework_from_env() {
+  echo "Configuring Lacework CLI from environment variables..." >&2
   local configure_args=(
     --noninteractive
     --account "$LW_ACCOUNT"
@@ -114,6 +97,59 @@ configure_lacework() {
     return 1
   }
   echo "Lacework CLI configured successfully" >&2
+}
+
+configure_lacework_interactive() {
+  echo "No Lacework configuration found — launching interactive setup..." >&2
+  echo "(The Lacework CLI will prompt for account, API key, and secret.)" >&2
+  lacework configure || {
+    echo "ERROR: interactive 'lacework configure' failed" >&2
+    return 1
+  }
+  echo "Lacework CLI configured successfully" >&2
+}
+
+validate_lacework_toml() {
+  # Checks that $LACEWORK_TOML has non-empty values for account, api_key, api_secret.
+  # Returns 0 if all three are populated, 1 otherwise. Populates $MISSING_TOML_FIELDS.
+  local field
+  MISSING_TOML_FIELDS=()
+  for field in account api_key api_secret; do
+    # Match: field = "non-empty string" anywhere in the file.
+    # Skips: field = "", missing field entirely.
+    if ! grep -Eq "^[[:space:]]*${field}[[:space:]]*=[[:space:]]*\"[^\"]+\"" "$LACEWORK_TOML"; then
+      MISSING_TOML_FIELDS+=("$field")
+    fi
+  done
+  [ ${#MISSING_TOML_FIELDS[@]} -eq 0 ]
+}
+
+ensure_lacework_configured() {
+  if [ -f "$LACEWORK_TOML" ]; then
+    if validate_lacework_toml; then
+      echo "Lacework CLI already configured — using $LACEWORK_TOML" >&2
+      return 0
+    fi
+    echo "WARNING: $LACEWORK_TOML exists but is missing values for: ${MISSING_TOML_FIELDS[*]}" >&2
+    echo "Falling back to environment variables or interactive setup..." >&2
+  fi
+
+  if [ -n "${LW_ACCOUNT:-}" ] && [ -n "${LW_API_KEY:-}" ] && [ -n "${LW_API_SECRET:-}" ]; then
+    configure_lacework_from_env
+    return $?
+  fi
+
+  if [ -t 0 ]; then
+    configure_lacework_interactive
+    return $?
+  fi
+
+  echo "ERROR: No Lacework credentials configured." >&2
+  echo "Pick one of:" >&2
+  echo "  1. Run setup from an interactive terminal — 'lacework configure' will prompt" >&2
+  echo "  2. Export LW_ACCOUNT, LW_API_KEY, LW_API_SECRET (and optional LW_SUBACCOUNT) and re-run" >&2
+  echo "  3. Run 'lacework configure' yourself to create $LACEWORK_TOML, then re-run setup" >&2
+  return 1
 }
 
 install_components() {
@@ -132,10 +168,9 @@ install_components() {
 run_setup() {
   echo "=== Fortinet Code Security Setup ===" >&2
 
-  check_env_vars || return 1
   install_jq || return 1
   install_lacework_cli || return 1
-  configure_lacework || return 1
+  ensure_lacework_configured || return 1
   install_components || return 1
 
   echo "" >&2
