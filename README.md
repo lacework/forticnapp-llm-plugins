@@ -43,16 +43,19 @@ Available versions are listed on the [Releases](../../releases) page.
 
 ### Setup
 
-After installing, set your Lacework credentials and run the setup skill:
+After installing, run `/fortinet-setup` in Claude Code. This installs the Lacework CLI, ensures credentials are configured, and installs the IaC and SCA scanning components.
 
-```bash
-export LW_ACCOUNT="your-account.lacework.net"
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
-```
+Credentials are resolved in this order:
 
-Then run `/fortinet-setup` in Claude Code. This installs the Lacework CLI, configures credentials, and installs the IaC and SCA scanning components.
+1. **Existing `~/.lacework.toml`** — if you've already run `lacework configure` at any point, setup uses it as-is.
+2. **Environment variables** — preferred for CI / automation. Export them before running setup:
+   ```bash
+   export LW_ACCOUNT="your-account.lacework.net"
+   export LW_API_KEY="your-api-key"
+   export LW_API_SECRET="your-api-secret"
+   export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
+   ```
+3. **Interactive prompt** — if neither of the above applies, setup runs `lacework configure` and the Lacework CLI prompts for the required fields. The result is persisted to `~/.lacework.toml` so subsequent runs skip this step.
 
 > For credential distribution options, see [Credential Strategy](#credential-strategy).
 
@@ -124,7 +127,7 @@ After every Claude Code task completes:
 ### Slash Commands
 
 #### `/fortinet-setup`
-Installs and configures the Lacework CLI with IaC and SCA scanning components. Checks for required environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`) and optionally `LW_SUBACCOUNT` for multi-tenant accounts.
+Installs and configures the Lacework CLI with IaC and SCA scanning components. Resolves credentials from `~/.lacework.toml` if it exists, then environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`, and optionally `LW_SUBACCOUNT`), otherwise runs `lacework configure` interactively.
 
 #### `/fortinet-review`
 Runs a security scan on IaC and dependency files in the current directory. Detects file types automatically and runs appropriate scanners (IaC, SCA, or both). Produces a unified report grouped by severity with remediation recommendations.
@@ -151,12 +154,14 @@ Claude Code task completes
 
 ## Credential Strategy
 
-Phase 1 uses a shared service account. Two distribution options are available:
+Phase 1 uses a shared service account. Setup accepts credentials in the following forms (resolved in order):
 
 | Option | How it works | Recommendation |
 |---|---|---|
-| **A: Shell env vars** | Add `LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET` (and optionally `LW_SUBACCOUNT`) to `~/.zshrc`. `/fortinet-setup` reads them at setup time. | Preferred — credentials not in version control |
-| **B: Baked-in key** | Credentials hardcoded in `plugin.json`. Distributed with the plugin. | Use only for fully internal, air-gapped environments |
+| **A: Existing `~/.lacework.toml`** | The Lacework CLI writes this file on `lacework configure`. If present, setup uses it as-is. | Default — lowest friction once configured |
+| **B: Shell env vars** | Export `LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET` (and optionally `LW_SUBACCOUNT`). Setup runs `lacework configure --noninteractive`, which writes `~/.lacework.toml`. | Preferred for CI / automation |
+| **C: Interactive prompt** | If neither of the above is present and setup is running in a terminal, it invokes `lacework configure` and the CLI prompts for credentials. | First-run bootstrap on a developer machine |
+| **D: Baked-in key** | Credentials hardcoded in `plugin.json`. Distributed with the plugin. | Use only for fully internal, air-gapped environments |
 
 The shared service account MUST be scoped to the Code Security product.
 
@@ -181,7 +186,13 @@ claude plugin install code-security@fortinet-plugins
 
 ### 2. Run setup
 
-Set your credentials and run `/fortinet-setup` in Claude Code, or run the script directly:
+Run `/fortinet-setup` in Claude Code, or run the script directly:
+
+```bash
+bash scripts/install-lw.sh
+```
+
+Setup will use your existing `~/.lacework.toml` if present, otherwise fall back to env vars, otherwise prompt interactively via `lacework configure`. For non-interactive runs (e.g. CI) you can export credentials first:
 
 ```bash
 export LW_ACCOUNT="your-account.lacework.net"

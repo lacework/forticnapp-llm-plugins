@@ -163,7 +163,7 @@ Both approaches were run against the same `aws_tf_test/` Terraform files.
 
 ## Open Items
 
-- [ ] Environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`) are no longer declared in the plugin manifest. Confirm these are documented for users to set in their shell environment instead.
+- [ ] Environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`) are no longer declared in the plugin manifest. Documented in the README as one of three credential paths — the script now also reads an existing `~/.lacework.toml` or falls back to interactive `lacework configure`.
 - [ ] Consider adding `"author"` field to `plugin.json` to resolve the validation warning.
 - [ ] Review whether the `"hooks"` block in `plugin.json` is working as expected after installation.
 - [ ] Once testing is complete, create a PR against `https://github.com/lacework-dev/fortinet-code-security-plugin` with the `plugin.json` fix.

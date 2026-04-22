@@ -21,13 +21,11 @@ claude plugin install code-security@fortinet-plugins
 
 ### Run setup (after installing plugin)
 ```bash
-export LW_ACCOUNT="your-account.lacework.net"
-export LW_API_KEY="your-api-key"
-export LW_API_SECRET="your-api-secret"
-export LW_SUBACCOUNT="your-subaccount"  # optional, for multi-tenant accounts
 # Then run /fortinet:cli-setup in Claude Code, or directly:
 bash scripts/install-lw.sh
 ```
+
+Credentials are resolved in order: existing `~/.lacework.toml` → env vars (`LW_ACCOUNT` / `LW_API_KEY` / `LW_API_SECRET`, plus optional `LW_SUBACCOUNT`) → interactive `lacework configure` prompt. Exports are only needed when no `~/.lacework.toml` exists and the run is non-interactive (e.g. CI).
 
 ### Test hooks manually
 ```bash
