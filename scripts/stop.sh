@@ -3,6 +3,32 @@
 # Fires on Stop hook after a session completes.
 # Outputs findings to stderr so Claude can present them to the user.
 
+# --- Read hook input early (needed for config check and later processing) ---
+HOOK_INPUT=$(cat)
+
+# --- Check plugin config for stop hook toggle ---
+# Config file: ~/.lacework/plugins/code-security.json
+# If missing or malformed, default to enabled.
+# Supports global toggle and per-repo overrides with prefix matching (longest match wins).
+PLUGIN_CONFIG="$HOME/.lacework/plugins/code-security.json"
+if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
+  HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+  # Normalize: strip trailing slash
+  HOOK_CWD="${HOOK_CWD%/}"
+
+  STOP_ENABLED=$(jq -r --arg cwd "$HOOK_CWD" '
+    .hooks.stop as $stop |
+    ($stop.enabled // true) as $global |
+    [ $stop.overrides[]? | select(.path != null) | .path as $p |
+      select($cwd | startswith(($p | rtrimstr("/")))) ] |
+    sort_by(.path | length) | last // { "enabled": $global } | .enabled
+  ' "$PLUGIN_CONFIG" 2>/dev/null)
+
+  if [ "$STOP_ENABLED" = "false" ]; then
+    exit 0
+  fi
+fi
+
 # --- Debug logging ---
 LOG_DIR="$HOME/.lacework/logs"
 mkdir -p "$LOG_DIR"
@@ -11,7 +37,6 @@ mkdir -p "$LOG_DIR"
 SCAN_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 
-HOOK_INPUT=$(cat)
 SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty')
 SESSION_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
 
@@ -103,7 +128,7 @@ lacework iac scan --upload=false --noninteractive \
 PIDS+=($!)
 
 lacework sca scan "$SCAN_PATH" --deployment=offprem --noninteractive --save-results=false \
-  -f sarif -o "$SCAN_TMPDIR/sca.sarif" 2>/dev/null &
+  -f sarif -o "$SCAN_TMPDIR/sca.sarif" >/dev/null 2>&1 &
 PIDS+=($!)
 
 # Wait for all scans

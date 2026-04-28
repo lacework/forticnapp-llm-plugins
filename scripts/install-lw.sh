@@ -165,6 +165,29 @@ install_components() {
   echo "IaC and SCA components installed successfully" >&2
 }
 
+create_plugin_config() {
+  local config_dir="$HOME/.lacework/plugins"
+  local config_file="$config_dir/code-security.json"
+
+  if [ -f "$config_file" ]; then
+    echo "Plugin config already exists: $config_file" >&2
+    return 0
+  fi
+
+  mkdir -p "$config_dir"
+  cat > "$config_file" <<'EOF'
+{
+  "hooks": {
+    "stop": {
+      "enabled": true,
+      "overrides": []
+    }
+  }
+}
+EOF
+  echo "Plugin config created: $config_file" >&2
+}
+
 run_setup() {
   echo "=== Fortinet Code Security Setup ===" >&2
 
@@ -172,6 +195,7 @@ run_setup() {
   install_lacework_cli || return 1
   ensure_lacework_configured || return 1
   install_components || return 1
+  create_plugin_config
 
   echo "" >&2
   echo "=== Setup complete ===" >&2
