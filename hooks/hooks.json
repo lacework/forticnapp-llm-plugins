@@ -14,7 +14,7 @@
     ],
     "PermissionRequest": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Read|Write|Edit",
         "hooks": [
           {
             "type": "command",

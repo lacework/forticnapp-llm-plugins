@@ -5,9 +5,7 @@
 # User's permissions.deny rules still take precedence over these approvals.
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-
-[ -z "$COMMAND" ] && exit 0
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 approve() {
   jq -n '{
@@ -18,6 +16,22 @@ approve() {
   }'
   exit 0
 }
+
+# --- File operations (Read/Write/Edit) on plugin-managed paths ---
+if [[ "$TOOL_NAME" == "Read" || "$TOOL_NAME" == "Write" || "$TOOL_NAME" == "Edit" ]]; then
+  FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+  [ -z "$FILE_PATH" ] && exit 0
+
+  # Auto-approve operations on ~/.lacework/ (plugin config, scan results, logs)
+  [[ "$FILE_PATH" == "$HOME/.lacework/"* ]] && approve
+  [[ "$FILE_PATH" == *"/.lacework/codesec.yaml" ]] && approve
+
+  exit 0
+fi
+
+# --- Bash commands ---
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+[ -z "$COMMAND" ] && exit 0
 
 # Lacework CLI commands (scan, configure, component install)
 [[ "$COMMAND" =~ ^lacework\  ]] && approve
@@ -36,6 +50,9 @@ approve() {
 # Hash utilities for scan marker dedup
 [[ "$COMMAND" =~ ^sha256sum\  ]] && approve
 [[ "$COMMAND" =~ ^shasum\  ]] && approve
+
+# mkdir for plugin directories
+[[ "$COMMAND" =~ ^mkdir\ -p.*\.lacework ]] && approve
 
 # Everything else — don't approve, let normal permission flow handle it
 exit 0
