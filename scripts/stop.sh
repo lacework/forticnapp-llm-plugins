@@ -128,7 +128,7 @@ lacework iac scan --upload=false --noninteractive \
 PIDS+=($!)
 
 lacework sca scan "$SCAN_PATH" --deployment=offprem --noninteractive --save-results=false \
-  -f sarif -o "$SCAN_TMPDIR/sca.sarif" 2>/dev/null &
+  -f sarif -o "$SCAN_TMPDIR/sca.sarif" >/dev/null 2>&1 &
 PIDS+=($!)
 
 # Wait for all scans
