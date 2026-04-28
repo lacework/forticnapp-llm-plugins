@@ -16,15 +16,12 @@ if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
   # Normalize: strip trailing slash
   HOOK_CWD="${HOOK_CWD%/}"
 
-  STOP_ENABLED=$(jq -r '
+  STOP_ENABLED=$(jq -r --arg cwd "$HOOK_CWD" '
     .hooks.stop as $stop |
     ($stop.enabled // true) as $global |
-    ($stop.overrides // []) as $overrides |
-    ([$overrides[] | select(.path != null) |
-      .path |= rtrimstr("/") |
-      select(("'"$HOOK_CWD"'" | startswith(.path)))] |
-      sort_by(.path | length) | last) as $match |
-    if $match then ($match.enabled // true) else $global end
+    [ $stop.overrides[]? | select(.path != null) | .path as $p |
+      select($cwd | startswith(($p | rtrimstr("/")))) ] |
+    sort_by(.path | length) | last // { "enabled": $global } | .enabled
   ' "$PLUGIN_CONFIG" 2>/dev/null)
 
   if [ "$STOP_ENABLED" = "false" ]; then
