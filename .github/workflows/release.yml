@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -141,7 +141,7 @@ jobs:
           echo "latest_zip=$LATEST_ZIP" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ steps.target.outputs.version }}"
           name: "v${{ steps.target.outputs.version }}"
