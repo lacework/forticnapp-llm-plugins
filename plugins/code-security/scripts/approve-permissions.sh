@@ -51,6 +51,10 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [[ "$COMMAND" =~ ^sha256sum\  ]] && approve
 [[ "$COMMAND" =~ ^shasum\  ]] && approve
 
+# Temp directory creation (used by code-review skill and stop hook)
+[[ "$COMMAND" =~ ^mktemp\  ]] && approve
+[[ "$COMMAND" =~ ^TMPDIR=.*mktemp ]] && approve
+
 # mkdir for plugin directories
 [[ "$COMMAND" =~ ^mkdir\ -p.*\.lacework ]] && approve
 
