@@ -5,9 +5,8 @@ on:
     branches: [main]
     paths:
       - 'plugins/**'
+      - '!plugins/**/*.md'
       - '.claude-plugin/**'
-    paths-ignore:
-      - '**.md'
   workflow_dispatch:
     inputs:
       version:
@@ -103,18 +102,10 @@ jobs:
             echo "---"
             echo "## Install"
             echo ""
-            echo "**Latest version:**"
-            echo "\`\`\`bash"
-            echo "gh release download --latest -R ${{ github.repository }} -A zip"
-            echo "unzip forticnapp-llm-plugins.zip -d forticnapp-llm-plugins"
-            echo "cd forticnapp-llm-plugins && claude plugin marketplace add \$PWD && claude plugin install code-security@fortinet-plugins"
+            echo "In Claude Code:"
             echo "\`\`\`"
-            echo ""
-            echo "**This version (v${{ steps.target.outputs.version }}):**"
-            echo "\`\`\`bash"
-            echo "gh release download v${{ steps.target.outputs.version }} -R ${{ github.repository }} -A zip"
-            echo "unzip forticnapp-llm-plugins-v${{ steps.target.outputs.version }}.zip -d forticnapp-llm-plugins"
-            echo "cd forticnapp-llm-plugins && claude plugin marketplace add \$PWD && claude plugin install code-security@fortinet-plugins"
+            echo "/plugin marketplace add ${{ github.repository }}"
+            echo "/plugin install code-security@fortinet-plugins"
             echo "\`\`\`"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
