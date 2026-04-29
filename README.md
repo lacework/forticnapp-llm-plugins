@@ -10,26 +10,14 @@ A collection of Fortinet security plugins for Claude Code.
 
 ## Installation
 
-```bash
-# Clone the repository
-git clone git@github.com:lacework/forticnapp-llm-plugins.git
-cd forticnapp-llm-plugins
+In Claude Code, register the marketplace and install a plugin:
 
-# Register the marketplace and install a plugin
-claude plugin marketplace add $PWD
-claude plugin install code-security@fortinet-plugins
+```
+/plugin marketplace add lacework/forticnapp-llm-plugins
+/plugin install code-security@fortinet-plugins
 ```
 
-Or install from a GitHub Release:
-
-```bash
-gh release download -R lacework/forticnapp-llm-plugins -A zip
-unzip -o forticnapp-llm-plugins-*.zip
-cd forticnapp-llm-plugins-*
-
-claude plugin marketplace add $PWD
-claude plugin install code-security@fortinet-plugins
-```
+> **Note**: This is a private repo. You need git SSH access or GitHub CLI auth (`gh auth login`) for the marketplace add to succeed.
 
 See each plugin's README for setup and configuration details.
 

@@ -16,30 +16,17 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ### Prerequisites
 
-- [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`)
+- Git SSH access or GitHub CLI auth (`gh auth login`) to the `lacework/forticnapp-llm-plugins` repo
 - Lacework API credentials (provided by your team)
 
 ### Installation
 
-Download and install the plugin:
+In Claude Code, register the marketplace and install the plugin:
 
-```bash
-# Download and extract (latest version)
-gh release download -R lacework/forticnapp-llm-plugins -A zip
-unzip -o forticnapp-llm-plugins-*.zip
-cd forticnapp-llm-plugins-*
-
-# Or download a specific version
-# gh release download v1.3.4 -R lacework/forticnapp-llm-plugins -A zip
-# unzip -o forticnapp-llm-plugins-1.3.4.zip
-# cd forticnapp-llm-plugins-1.3.4
-
-# Register marketplace and install (marketplace name "fortinet-plugins" is defined in .claude-plugin/marketplace.json)
-claude plugin marketplace add $PWD
-claude plugin install code-security@fortinet-plugins
 ```
-
-Available versions are listed on the [Releases](../../releases) page.
+/plugin marketplace add lacework/forticnapp-llm-plugins
+/plugin install code-security@fortinet-plugins
+```
 
 ### Setup
 
