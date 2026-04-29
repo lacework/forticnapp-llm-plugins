@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+    paths:
+      - 'plugins/**'
+      - '.claude-plugin/**'
     paths-ignore:
       - '**.md'
   workflow_dispatch:
@@ -35,7 +38,7 @@ jobs:
       - name: Get current version
         id: current
         run: |
-          echo "version=$(jq -r '.version' .claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r '.version' plugins/code-security/.claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve target version
         id: target
@@ -103,15 +106,15 @@ jobs:
             echo "**Latest version:**"
             echo "\`\`\`bash"
             echo "gh release download --latest -R ${{ github.repository }} -A zip"
-            echo "unzip fortinet-code-security-plugin.zip -d fortinet-code-security-plugin"
-            echo "cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin"
+            echo "unzip forticnapp-llm-plugins.zip -d forticnapp-llm-plugins"
+            echo "cd forticnapp-llm-plugins && claude plugin marketplace add \$PWD && claude plugin install code-security@fortinet-plugins"
             echo "\`\`\`"
             echo ""
             echo "**This version (v${{ steps.target.outputs.version }}):**"
             echo "\`\`\`bash"
             echo "gh release download v${{ steps.target.outputs.version }} -R ${{ github.repository }} -A zip"
-            echo "unzip fortinet-code-security-plugin-v${{ steps.target.outputs.version }}.zip -d fortinet-code-security-plugin"
-            echo "cd fortinet-code-security-plugin && claude plugin marketplace add ./ && claude plugin install fortinet-code-security-plugin"
+            echo "unzip forticnapp-llm-plugins-v${{ steps.target.outputs.version }}.zip -d forticnapp-llm-plugins"
+            echo "cd forticnapp-llm-plugins && claude plugin marketplace add \$PWD && claude plugin install code-security@fortinet-plugins"
             echo "\`\`\`"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -119,15 +122,15 @@ jobs:
       - name: Update version in plugin files
         run: |
           V="${{ steps.target.outputs.version }}"
-          # Update plugin.json
-          jq --arg v "$V" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
-          # Update marketplace.json
+          # Update plugin.json (under plugins/code-security/)
+          jq --arg v "$V" '.version = $v' plugins/code-security/.claude-plugin/plugin.json > tmp.json && mv tmp.json plugins/code-security/.claude-plugin/plugin.json
+          # Update marketplace.json (at root)
           jq --arg v "$V" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
 
       - name: Commit version bump and tag
         run: |
           V="${{ steps.target.outputs.version }}"
-          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
+          git add plugins/code-security/.claude-plugin/plugin.json .claude-plugin/marketplace.json
           git commit -m "chore: release v${V} [skip ci]"
           git push
           git tag "v${V}"
@@ -136,13 +139,11 @@ jobs:
       - name: Package plugin
         run: |
           V="${{ steps.target.outputs.version }}"
-          VERSIONED_ZIP="fortinet-code-security-plugin-v${V}.zip"
-          LATEST_ZIP="fortinet-code-security-plugin.zip"
+          VERSIONED_ZIP="forticnapp-llm-plugins-v${V}.zip"
+          LATEST_ZIP="forticnapp-llm-plugins.zip"
           zip -r "$VERSIONED_ZIP" \
             .claude-plugin/ \
-            hooks/ \
-            scripts/ \
-            skills/ \
+            plugins/code-security/ \
             README.md
           cp "$VERSIONED_ZIP" "$LATEST_ZIP"
           echo "versioned_zip=$VERSIONED_ZIP" >> "$GITHUB_ENV"
