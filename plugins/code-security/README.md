@@ -4,7 +4,7 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 
 ## Features
 
-- **Easy setup**: Run `/fortinet-setup` to install and configure the Lacework CLI and scanning components
+- **Easy setup**: Run `/fortinet:cli-setup` to install and configure the Lacework CLI and scanning components
 - **Auto-remediation**: Critical/high findings trigger Claude to fix issues without prompting
 - **Parallel scanning**: IaC and SCA scans run simultaneously to minimize wait time
 - **Smart scoping**: Only scans files changed in the current task, not the whole repo
@@ -43,7 +43,7 @@ Available versions are listed on the [Releases](../../releases) page.
 
 ### Setup
 
-After installing, run `/fortinet-setup` in Claude Code. This installs the Lacework CLI, ensures credentials are configured, and installs the IaC and SCA scanning components.
+After installing, run `/fortinet:cli-setup` in Claude Code. This installs the Lacework CLI, ensures credentials are configured, and installs the IaC and SCA scanning components.
 
 Credentials are resolved in this order:
 
@@ -126,17 +126,23 @@ After every Claude Code task completes:
 
 ### Slash Commands
 
-#### `/fortinet-setup`
+#### `/fortinet:cli-setup`
 Installs and configures the Lacework CLI with IaC and SCA scanning components. Resolves credentials from `~/.lacework.toml` if it exists, then environment variables (`LW_ACCOUNT`, `LW_API_KEY`, `LW_API_SECRET`, and optionally `LW_SUBACCOUNT`), otherwise runs `lacework configure` interactively.
 
-#### `/fortinet-review`
+#### `/fortinet:code-review`
 Runs a security scan on IaC and dependency files in the current directory. Detects file types automatically and runs appropriate scanners (IaC, SCA, or both). Produces a unified report grouped by severity with remediation recommendations.
+
+#### `/fortinet:settings`
+Configure plugin settings — enable or disable automatic scanning globally or per repo. Settings are stored in `~/.lacework/plugins/code-security.json`. Supports:
+- **Disable/enable scanning globally** — turns off the stop hook for all repos
+- **Disable/enable scanning for a specific repo** — adds a per-repo override (longest path prefix match wins)
+- **Show current settings** — displays the global default and any repo overrides
 
 ## Session Lifecycle
 
 ```
 First time setup
-  └─> User runs /fortinet-setup
+  └─> User runs /fortinet:cli-setup
         └─> scripts/install-lw.sh runs
         └─> Installs jq, Lacework CLI, configures credentials, installs components
 
@@ -186,7 +192,7 @@ claude plugin install code-security@fortinet-plugins
 
 ### 2. Run setup
 
-Run `/fortinet-setup` in Claude Code, or run the script directly:
+Run `/fortinet:cli-setup` in Claude Code, or run the script directly:
 
 ```bash
 bash scripts/install-lw.sh

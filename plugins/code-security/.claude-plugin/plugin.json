@@ -1,5 +1,8 @@
 {
   "name": "code-security",
   "version": "1.4.1",
-  "description": "Fortinet Code Security - IaC and SCA scanning for Claude Code"
+  "description": "Fortinet Code Security - IaC and SCA scanning for Claude Code",
+  "author": {
+    "name": "Hemanth Gokavarapu"
+  }
 }
