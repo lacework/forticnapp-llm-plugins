@@ -33,6 +33,22 @@ claude plugin install code-security@fortinet-plugins
 
 See each plugin's README for setup and configuration details.
 
+## Releases
+
+Releases are managed automatically via GitHub Actions:
+
+- **Auto-release**: Every push to `main` triggers a version bump and release. The bump type is determined from [conventional commit](https://www.conventionalcommits.org/) prefixes:
+
+  | Commit prefix | Version bump |
+  |---|---|
+  | `feat!:`, `fix!:` (breaking change) | Major (`1.0.0` → `2.0.0`) |
+  | `feat:` | Minor (`1.0.0` → `1.1.0`) |
+  | `fix:`, `chore:`, `refactor:`, etc. | Patch (`1.0.0` → `1.0.1`) |
+
+- **Manual release**: Go to **Actions → Release → Run workflow** and enter a specific version (e.g. `2.1.0`) to cut a release at an exact version. Use this to skip ahead, backport, or hotfix.
+
+Each release publishes a `.zip` artifact and updates the install command in the release notes. Available versions are listed on the [Releases](../../releases) page.
+
 ## Adding a New Plugin
 
 1. Create a directory under `plugins/<plugin-name>/`

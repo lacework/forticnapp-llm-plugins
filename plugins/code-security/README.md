@@ -59,70 +59,19 @@ Credentials are resolved in this order:
 
 > For credential distribution options, see [Credential Strategy](#credential-strategy).
 
-## Releases
-
-Releases are managed automatically via GitHub Actions:
-
-- **Auto-release**: Every push to `main` triggers a version bump and release. The bump type is determined from [conventional commit](https://www.conventionalcommits.org/) prefixes:
-
-  | Commit prefix | Version bump |
-  |---|---|
-  | `feat!:`, `fix!:` (breaking change) | Major (`1.0.0` → `2.0.0`) |
-  | `feat:` | Minor (`1.0.0` → `1.1.0`) |
-  | `fix:`, `chore:`, `refactor:`, etc. | Patch (`1.0.0` → `1.0.1`) |
-
-- **Manual release**: Go to **Actions → Release → Run workflow** and enter a specific version (e.g. `2.1.0`) to cut a release at an exact version. Use this to skip ahead, backport, or hotfix.
-
-Each release publishes a `.zip` artifact and updates the install command in the release notes.
-
 ## How It Works
 
 ### Automatic Scanning (Stop Hook)
 
 After every Claude Code task completes:
 
-1. Changed file paths are extracted from the session
-2. Files are classified as IaC (`*.tf`, `*.hcl`, etc.) or SCA manifests (`package.json`, `go.mod`, etc.)
-3. Appropriate scanners launch in parallel
+1. Changed file paths are extracted from the session transcript
+2. Both IaC and SCA scanners launch in parallel on the project directory
+3. Findings are filtered to only those related to your changed files (exact match or same directory)
 4. Results are aggregated:
-   - **Critical/High findings** → printed to stderr, Claude re-invokes automatically to remediate
-   - **Medium/Low findings** → printed to stdout as informational (no re-invocation)
+   - **Critical/High findings in changed files** → printed to stderr, Claude re-invokes automatically to remediate
+   - **Pre-existing findings** → summarized as FYI (no re-invocation)
    - **No findings** → silent exit
-
-### File-Type Routing
-
-**IaC scan** (`lacework iac scan`):
-
-| Match | Examples |
-|---|---|
-| `*.tf`, `*.tfvars`, `*.hcl` | Terraform, HCL configs |
-| `*.bicep` | Azure Bicep |
-| `*.template` | CloudFormation templates |
-| `*.yaml`/`*.json` in `k8s/`, `kubernetes/`, `helm/`, `charts/`, `manifests/`, `argocd/`, `flux/` | Kubernetes manifests, Helm charts |
-| `*.yaml`/`*.json` in `cloudformation/`, `infra/`, `iac/`, `ansible/`, `playbooks/` | CloudFormation, Ansible |
-| `Pulumi.yaml`, `Pulumi.*.yaml` | Pulumi stacks |
-| `serverless.yml`, `serverless.yaml` | Serverless Framework |
-| `docker-compose*.yml`, `compose.yml` | Docker Compose |
-| `cdk.json` | AWS CDK |
-
-**SCA scan** (`lacework sca scan`):
-
-| Match | Ecosystem |
-|---|---|
-| `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `npm-shrinkwrap.json` | Node/JS |
-| `requirements*.txt`, `Pipfile`, `pyproject.toml`, `poetry.lock`, `setup.py`, `setup.cfg` | Python |
-| `go.mod`, `go.sum` | Go |
-| `pom.xml`, `build.gradle`, `build.gradle.kts`, `*.gradle` | Java/Kotlin |
-| `Gemfile`, `Gemfile.lock` | Ruby |
-| `Cargo.toml`, `Cargo.lock` | Rust |
-| `composer.json`, `composer.lock` | PHP |
-| `*.csproj`, `*.vbproj`, `*.fsproj`, `packages.config` | .NET |
-| `Package.swift`, `Package.resolved`, `Podfile`, `Podfile.lock` | Swift/iOS |
-| `build.sbt` | Scala |
-| `mix.exs`, `mix.lock` | Elixir |
-| `pubspec.yaml`, `pubspec.lock` | Dart/Flutter |
-
-**No scan**: source-only changes (`.py`, `.js`, `.ts`, `.go`, etc.) — SAST out of scope for Phase 1.
 
 ### Slash Commands
 
@@ -151,11 +100,11 @@ Developer prompts Claude → Claude writes/edits files
 Claude Code task completes
   └─> scripts/stop.sh fires
         └─> No changed files? → exit 0 (silent)
-        └─> IaC files changed? → lacework iac scan &
-        └─> Manifest files changed? → lacework sca scan & (or cache hit)
+        └─> Changed files found? → lacework iac scan & lacework sca scan &
         └─> Wait for scans...
-        └─> Clean / medium/low → exit 0
-        └─> Critical/high → exit 2 → Claude auto-remediates
+        └─> Filter findings to changed files
+        └─> No findings in changed files → exit 0
+        └─> Critical/high in changed files → exit 2 → Claude auto-remediates
 ```
 
 ## Credential Strategy
