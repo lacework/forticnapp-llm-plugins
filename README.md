@@ -17,8 +17,6 @@ In Claude Code, register the marketplace and install a plugin:
 /plugin install code-security@fortinet-plugins
 ```
 
-> **Note**: This is a private repo. You need git SSH access or GitHub CLI auth (`gh auth login`) for the marketplace add to succeed.
-
 See each plugin's README for setup and configuration details.
 
 ## Releases
