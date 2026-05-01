@@ -45,28 +45,16 @@ fi
 # --- Read hook input ---
 HOOK_INPUT=$(cat)
 
-# --- Check if scanning is enabled for this repo ---
-# Uses the same config file and resolution logic as stop.sh.
-# If scanning is disabled, we skip context injection — no point telling Claude
-# about security scanning if it's turned off for this repo.
-PLUGIN_CONFIG="$HOME/.lacework/plugins/code-security.json"
-if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
-  HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
-  HOOK_CWD="${HOOK_CWD%/}"
+# --- Read config ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/config-reader.sh"
 
-  ENABLED=$(jq -r --arg cwd "$HOOK_CWD" '
-    .hooks.stop as $stop |
-    ($stop.enabled // true) as $global |
-    [ $stop.overrides[]? | select(.path != null) | .path as $p |
-      select($cwd | startswith(($p | rtrimstr("/")))) ] |
-    sort_by(.path | length) | last // { "enabled": $global } | .enabled
-  ' "$PLUGIN_CONFIG" 2>/dev/null)
+HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+resolve_config "$HOOK_CWD"
 
-  if [ "$ENABLED" = "false" ]; then
-    # Scanning disabled for this repo — inject nothing
-    echo '{}'
-    exit 0
-  fi
+if [ "$SCAN_ENABLED" = "false" ]; then
+  echo '{}'
+  exit 0
 fi
 
 # --- Check if Lacework CLI is installed ---
@@ -79,11 +67,16 @@ if ! command -v lacework &>/dev/null; then
 fi
 
 # --- Inject security context ---
-# This message becomes part of Claude's system context for the entire session.
-# It is NOT shown to the user — it shapes Claude's behavior silently.
+# Adjust the scanning description based on the active mode.
+if [ "$SCAN_MODE" = "pre-commit" ]; then
+  SCAN_DESC="Security scanning: IaC and SCA scans run automatically before git commit. Critical/High findings in staged files will block the commit until resolved."
+else
+  SCAN_DESC="Security scanning: IaC and SCA scans run automatically after every task. Critical/High findings in changed files will block until resolved."
+fi
+
 CONTEXT="Fortinet Code Security is active in this session.
 
-Security scanning: IaC and SCA scans run automatically after every task. Critical/High findings in changed files will block until resolved.
+${SCAN_DESC}
 
 When writing infrastructure code or modifying dependencies:
 - Prefer restrictive defaults (least privilege, no public access, encrypted by default)
