@@ -70,10 +70,11 @@ if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
 fi
 
 # --- Check if Lacework CLI is installed ---
-# If not installed, nudge the user to run setup instead of injecting scan context.
+# If not installed, skip context injection. No point telling Claude about scanning
+# capabilities that aren't available yet. The user will discover /fortinet:cli-setup
+# on their own or via the plugin README.
 if ! command -v lacework &>/dev/null; then
-  CONTEXT="Fortinet Code Security plugin is installed but the Lacework CLI is not configured yet. Suggest the user run /fortinet:cli-setup to get started."
-  jq -n --arg ctx "$CONTEXT" '{ additionalContext: $ctx }'
+  echo '{}'
   exit 0
 fi
 
