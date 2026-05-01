@@ -6,27 +6,21 @@
 # --- Read hook input early (needed for config check and later processing) ---
 HOOK_INPUT=$(cat)
 
-# --- Check plugin config for stop hook toggle ---
-# Config file: ~/.lacework/plugins/code-security.json
-# If missing or malformed, default to enabled.
-# Supports global toggle and per-repo overrides with prefix matching (longest match wins).
-PLUGIN_CONFIG="$HOME/.lacework/plugins/code-security.json"
-if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
-  HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
-  # Normalize: strip trailing slash
-  HOOK_CWD="${HOOK_CWD%/}"
+# --- Check plugin config ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/config-reader.sh"
 
-  STOP_ENABLED=$(jq -r --arg cwd "$HOOK_CWD" '
-    .hooks.stop as $stop |
-    ($stop.enabled // true) as $global |
-    [ $stop.overrides[]? | select(.path != null) | .path as $p |
-      select($cwd | startswith(($p | rtrimstr("/")))) ] |
-    sort_by(.path | length) | last // { "enabled": $global } | .enabled
-  ' "$PLUGIN_CONFIG" 2>/dev/null)
+HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+resolve_config "$HOOK_CWD"
 
-  if [ "$STOP_ENABLED" = "false" ]; then
-    exit 0
-  fi
+# Exit if scanning is disabled for this repo
+if [ "$SCAN_ENABLED" = "false" ]; then
+  exit 0
+fi
+
+# Exit if mode is pre-commit — stop hook only runs in post-task mode
+if [ "$SCAN_MODE" = "pre-commit" ]; then
+  exit 0
 fi
 
 # --- Debug logging ---
