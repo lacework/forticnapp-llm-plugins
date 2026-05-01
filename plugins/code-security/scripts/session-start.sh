@@ -34,6 +34,14 @@
 #   3. Fall back to hooks.stop.enabled global default
 #   4. If config missing or malformed, default to enabled
 
+# --- Require jq ---
+# All output paths use jq to produce valid JSON. If jq is missing, output empty
+# JSON rather than risking malformed output that could break session start.
+if ! command -v jq &>/dev/null; then
+  echo '{}'
+  exit 0
+fi
+
 # --- Read hook input ---
 HOOK_INPUT=$(cat)
 
