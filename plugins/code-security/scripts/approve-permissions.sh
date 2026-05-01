@@ -39,6 +39,7 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 # Plugin scripts (stop.sh, install-lw.sh, approve-permissions.sh)
 [[ "$COMMAND" =~ scripts/stop\.sh ]] && approve
 [[ "$COMMAND" =~ scripts/install-lw\.sh ]] && approve
+[[ "$COMMAND" =~ scripts/session-start\.sh ]] && approve
 
 # jq for JSON parsing (used by stop hook and skills)
 [[ "$COMMAND" =~ ^jq\  ]] && approve
