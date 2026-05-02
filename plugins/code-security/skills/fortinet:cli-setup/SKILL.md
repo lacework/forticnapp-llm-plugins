@@ -50,3 +50,14 @@ Report a summary of what happened:
 - Final status: ready or failed (with error details)
 
 If everything succeeded, tell the user they can now use `/fortinet:code-review` to scan their code.
+
+## Scanning Mode
+
+During setup, the script asks the user to choose a scanning mode:
+
+1. **Pre-commit** (default) — scans run before `git commit`. Critical/High findings block the commit.
+2. **Post-task** — scans run after every Claude Code task. Critical/High findings trigger re-invocation.
+
+In non-interactive environments, the default is `pre-commit`.
+
+The mode is stored in `~/.lacework/plugins/code-security.json` and can be changed later via `/fortinet:settings`.
