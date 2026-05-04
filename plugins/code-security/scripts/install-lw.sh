@@ -227,10 +227,23 @@ run_setup() {
   install_components || return 1
   create_plugin_config
 
+  # Show active mode in setup summary
+  local active_mode="unknown"
+  local config_file="$HOME/.lacework/plugins/code-security.json"
+  if [ -f "$config_file" ] && command -v jq &>/dev/null; then
+    active_mode=$(jq -r '.hooks.mode // "post-task"' "$config_file" 2>/dev/null)
+  fi
+
   echo "" >&2
   echo "=== Setup complete ===" >&2
+  echo "Scanning mode: $active_mode" >&2
+  if [ "$active_mode" = "pre-commit" ]; then
+    echo "  Scans run automatically before git commit. Critical/High findings block the commit." >&2
+  else
+    echo "  Scans run automatically after every Claude Code task. Critical/High findings trigger re-invocation." >&2
+  fi
   echo "You can now use /fortinet:code-review to scan your code." >&2
-  echo "Scanning mode: use /fortinet:settings to switch between pre-commit and post-task." >&2
+  echo "Use /fortinet:settings to change scanning mode." >&2
   return 0
 }
 
