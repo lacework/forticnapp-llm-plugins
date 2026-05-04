@@ -48,6 +48,15 @@ Credentials are resolved in this order:
 
 ## How It Works
 
+### Security Context (SessionStart Hook)
+
+When a Claude Code session starts, the plugin injects security awareness context into the conversation. This serves two purposes:
+
+1. **Proactive secure coding** — Claude knows security scanning is active and writes secure defaults from the start (restrictive CIDR blocks, no public access, encrypted by default), reducing the number of findings and remediation loops.
+2. **Skill discoverability** — Claude knows about `/fortinet:code-review`, `/fortinet:cli-setup`, and `/fortinet:settings` and can suggest them when relevant.
+
+The context injection respects the settings toggle — if scanning is disabled for a repo via `/fortinet:settings`, no context is injected. If the Lacework CLI is not yet installed, no context is injected either.
+
 ### Automatic Scanning (Stop Hook)
 
 After every Claude Code task completes:
@@ -77,12 +86,17 @@ Configure plugin settings — enable or disable automatic scanning globally or p
 ## Session Lifecycle
 
 ```
+Session starts
+  └─> scripts/session-start.sh fires
+        └─> Scanning disabled or CLI missing? → no context injected
+        └─> Scanning enabled? → inject security awareness context
+
 First time setup
   └─> User runs /fortinet:cli-setup
         └─> scripts/install-lw.sh runs
         └─> Installs jq, Lacework CLI, configures credentials, installs components
 
-Developer prompts Claude → Claude writes/edits files
+Developer prompts Claude → Claude writes/edits files (with security awareness)
 
 Claude Code task completes
   └─> scripts/stop.sh fires
