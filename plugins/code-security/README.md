@@ -256,6 +256,16 @@ bash plugins/code-security/tests/test-stop.sh
 | Linux (x86_64, arm64) | curl installer |
 | Windows | Not supported in Phase 1 |
 
+## Known Limitations
+
+### Pre-commit mode and subagents
+
+Claude Code's `PreToolUse` hooks do not fire for tool calls made by subagents spawned via the Agent tool ([anthropics/claude-code#34692](https://github.com/anthropics/claude-code/issues/34692)). This means if a subagent runs `git commit`, the pre-commit scan will not trigger.
+
+**Workaround:** Have subagents make code changes (Write/Edit) without committing. The main session stages and commits after reviewing, which triggers the pre-commit scan normally.
+
+This is a Claude Code platform limitation, not a plugin issue. The post-task mode (Stop hook) has the same limitation — it fires on main session task completion, not on individual subagent completions.
+
 ## Requirements
 
 - bash 3.2+
