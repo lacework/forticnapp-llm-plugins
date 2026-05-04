@@ -80,15 +80,34 @@ log() {
 log "=== Pre-commit scan started === (cwd: $HOOK_CWD)"
 log "Command: $COMMAND"
 
-# --- Get staged files ---
+# --- Get files being committed ---
+# The PreToolUse hook fires BEFORE the command runs, so git diff --cached may
+# be empty if git add and git commit are chained (e.g., "git add file && git commit").
+# Strategy: check already-staged files first, then also extract files from any
+# git add commands in the same chain.
 SCAN_PATH="$HOOK_CWD"
-STAGED_FILES=$(cd "$SCAN_PATH" && git diff --cached --name-only 2>/dev/null)
 
-if [ -z "$STAGED_FILES" ]; then
-  log "EXIT: No staged files"
+# 1. Already staged files
+COMMIT_FILES=$(cd "$SCAN_PATH" && git diff --cached --name-only 2>/dev/null)
+
+# 2. Extract files from git add in the command chain (handles "git add file1 file2 && git commit")
+#    Captures file args after "git add" up to the next && or ; or end of string.
+#    Excludes flags like -A, -u, --all, -p, -i, -f, --force
+GIT_ADD_FILES=$(echo "$COMMAND" | grep -oE 'git\s+add\s+[^;&]+' | sed 's/git\s*add\s*//' | tr ' ' '\n' | grep -v '^-' | grep -v '^$')
+
+# If git add uses -A or --all or ., treat as "all modified files in repo"
+if echo "$COMMAND" | grep -qE 'git\s+add\s+(-A|--all|\.)'; then
+  GIT_ADD_FILES=$(cd "$SCAN_PATH" && git diff --name-only 2>/dev/null; cd "$SCAN_PATH" && git ls-files --others --exclude-standard 2>/dev/null)
+fi
+
+# Combine both sources, deduplicate
+COMMIT_FILES=$(printf '%s\n%s' "$COMMIT_FILES" "$GIT_ADD_FILES" | sort -u | grep -v '^$')
+
+if [ -z "$COMMIT_FILES" ]; then
+  log "EXIT: No files to commit (no staged files, no git add files found)"
   exit 0
 fi
-log "Staged files: $(echo "$STAGED_FILES" | tr '\n' ', ')"
+log "Files being committed: $(echo "$COMMIT_FILES" | tr '\n' ', ')"
 
 # --- Setup temp directory ---
 SCAN_TMPDIR=$(mktemp -d)
@@ -96,13 +115,13 @@ trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 
 # Build staged files list for filtering
 STAGED_RELATIVE="$SCAN_TMPDIR/staged_relative.txt"
-echo "$STAGED_FILES" > "$STAGED_RELATIVE"
+echo "$COMMIT_FILES" > "$STAGED_RELATIVE"
 
 STAGED_DIRS="$SCAN_TMPDIR/staged_dirs.txt"
 while IFS= read -r rel; do
   [ -z "$rel" ] && continue
   dirname "$rel"
-done <<< "$STAGED_FILES" | sort -u > "$STAGED_DIRS"
+done <<< "$COMMIT_FILES" | sort -u > "$STAGED_DIRS"
 
 # --- Run scans in parallel ---
 log "Starting IaC and SCA scans..."
@@ -286,8 +305,8 @@ fi
 STAGED_FINDINGS_TEXT=$(cat "$STAGED_FINDINGS")
 
 # Build staged files list for display
-STAGED_DISPLAY=$(echo "$STAGED_FILES" | head -5 | sed 's/^/- /')
-STAGED_COUNT=$(echo "$STAGED_FILES" | wc -l | tr -d ' ')
+STAGED_DISPLAY=$(echo "$COMMIT_FILES" | head -5 | sed 's/^/- /')
+STAGED_COUNT=$(echo "$COMMIT_FILES" | wc -l | tr -d ' ')
 if [ "$STAGED_COUNT" -gt 5 ]; then
   STAGED_DISPLAY="${STAGED_DISPLAY}
 - ... and $((STAGED_COUNT - 5)) more"
