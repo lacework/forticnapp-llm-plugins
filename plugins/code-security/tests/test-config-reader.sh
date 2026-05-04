@@ -64,11 +64,7 @@ fi
 rm -rf "$TEMP_HOME"
 
 # --- v2 config, globally disabled ---
-# NOTE: jq's // operator treats false as empty, so (false // true) = true.
-# This means setting hooks.enabled=false without an override does NOT disable
-# scanning (known jq quirk). The per-repo override path works correctly.
-# This test documents the actual behavior.
-echo "--- v2 config, globally disabled (known jq quirk) ---"
+echo "--- v2 config, globally disabled ---"
 TEMP_HOME=$(mktemp -d)
 mkdir -p "$TEMP_HOME/.lacework/plugins"
 cat > "$TEMP_HOME/.lacework/plugins/code-security.json" << 'EOF'
@@ -84,12 +80,10 @@ RESULT=$(HOME="$TEMP_HOME" bash -c "
   resolve_config '/some/project'
   echo \"MODE=\$SCAN_MODE ENABLED=\$SCAN_ENABLED\"
 " 2>/dev/null)
-# Due to jq // treating false as empty, global enabled=false resolves to true.
-# Per-repo overrides (tested below) work correctly for disabling.
-if echo "$RESULT" | grep -q "ENABLED=true"; then
-  pass "v2 globally disabled resolves to true (jq // quirk — use per-repo override instead)"
+if echo "$RESULT" | grep -q "ENABLED=false"; then
+  pass "v2 globally disabled"
 else
-  fail "v2 globally disabled expected true due to jq quirk (got $RESULT)"
+  fail "v2 globally disabled (got $RESULT)"
 fi
 rm -rf "$TEMP_HOME"
 
@@ -159,8 +153,7 @@ fi
 rm -rf "$TEMP_HOME"
 
 # --- v1 config (legacy), disabled ---
-# Same jq // quirk as v2: (false // true) = true in jq.
-echo "--- v1 config (legacy), disabled (known jq quirk) ---"
+echo "--- v1 config (legacy), disabled ---"
 TEMP_HOME=$(mktemp -d)
 mkdir -p "$TEMP_HOME/.lacework/plugins"
 cat > "$TEMP_HOME/.lacework/plugins/code-security.json" << 'EOF'
@@ -177,10 +170,10 @@ RESULT=$(HOME="$TEMP_HOME" bash -c "
   resolve_config '/some/project'
   echo \"MODE=\$SCAN_MODE ENABLED=\$SCAN_ENABLED\"
 " 2>/dev/null)
-if echo "$RESULT" | grep -q "MODE=post-task ENABLED=true"; then
-  pass "v1 legacy disabled resolves to true (jq // quirk)"
+if echo "$RESULT" | grep -q "MODE=post-task ENABLED=false"; then
+  pass "v1 legacy disabled"
 else
-  fail "v1 legacy disabled expected true due to jq quirk (got $RESULT)"
+  fail "v1 legacy disabled (got $RESULT)"
 fi
 rm -rf "$TEMP_HOME"
 

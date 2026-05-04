@@ -38,22 +38,26 @@ resolve_config() {
   if [ -n "$has_mode" ]; then
     # --- v2 format ---
     SCAN_MODE="$has_mode"
+    # Note: jq's // operator treats false as empty, so we use
+    # if/then/else instead of // to correctly handle enabled:false
     SCAN_ENABLED=$(jq -r --arg cwd "$cwd" '
       .hooks as $h |
-      ($h.enabled // true) as $global |
+      (if $h.enabled == null then true else $h.enabled end) as $global |
       [ $h.overrides[]? | select(.path != null) | .path as $p |
         select($cwd | startswith(($p | rtrimstr("/")))) ] |
-      sort_by(.path | length) | last // { "enabled": $global } | .enabled
+      sort_by(.path | length) | last // { "enabled": $global } |
+      if .enabled == null then $global else .enabled end
     ' "$config_file" 2>/dev/null)
   else
     # --- v1 format (legacy) ---
     SCAN_MODE="post-task"
     SCAN_ENABLED=$(jq -r --arg cwd "$cwd" '
       .hooks.stop as $stop |
-      ($stop.enabled // true) as $global |
+      (if $stop.enabled == null then true else $stop.enabled end) as $global |
       [ $stop.overrides[]? | select(.path != null) | .path as $p |
         select($cwd | startswith(($p | rtrimstr("/")))) ] |
-      sort_by(.path | length) | last // { "enabled": $global } | .enabled
+      sort_by(.path | length) | last // { "enabled": $global } |
+      if .enabled == null then $global else .enabled end
     ' "$config_file" 2>/dev/null)
   fi
 
