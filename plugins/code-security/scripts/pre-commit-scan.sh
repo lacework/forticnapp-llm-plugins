@@ -15,7 +15,7 @@
 #   7. Blocks commit if Critical/High findings exist in staged files
 #
 # Output format (PreToolUse hook protocol):
-#   Block:  { "hookSpecificOutput": { "hookEventName": "PreToolUse", "decision": { "behavior": "block", "message": "..." } } }
+#   Block:  { "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..." } }
 #   Allow:  exit 0 with no output (or empty JSON)
 #
 # Severity handling:

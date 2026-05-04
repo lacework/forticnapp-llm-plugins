@@ -119,6 +119,26 @@ OUTPUT=$(echo '{"cwd":"/tmp"}' | bash "$HOOK" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "missing tool_input exits 0" || fail "missing tool_input should exit 0, got $EXIT"
 
+# --- Block output uses correct PreToolUse protocol ---
+echo "--- Block output format ---"
+# Verify the script uses permissionDecision: "deny" (not decision.behavior: "block")
+if grep -q 'permissionDecision.*deny' "$HOOK"; then
+  pass "uses permissionDecision: deny"
+else
+  fail "missing permissionDecision: deny — commit blocking won't work"
+fi
+if grep -q 'permissionDecisionReason' "$HOOK"; then
+  pass "uses permissionDecisionReason for block message"
+else
+  fail "missing permissionDecisionReason — Claude won't see why commit was blocked"
+fi
+# Verify it does NOT use the old incorrect format
+if grep -q '"behavior".*"block"' "$HOOK"; then
+  fail "still uses old decision.behavior: block format"
+else
+  pass "does not use old decision.behavior format"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
