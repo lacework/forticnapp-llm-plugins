@@ -379,13 +379,13 @@ After fixing or adding exceptions, retry the git commit command.
 
 log "EXIT(block): ${STAGED_CRIT} Critical, ${STAGED_HIGH} High findings in staged files"
 
-# Output PreToolUse block response
+# Output PreToolUse deny response
+# permissionDecision: "deny" blocks the tool call
+# permissionDecisionReason: fed back to Claude so it understands why and can fix
 jq -n --arg msg "$MESSAGE" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
-    decision: {
-      behavior: "block",
-      message: $msg
-    }
+    permissionDecision: "deny",
+    permissionDecisionReason: $msg
   }
 }'
