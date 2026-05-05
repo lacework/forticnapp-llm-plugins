@@ -27,12 +27,11 @@
 # Output format (Claude Code SessionStart hook protocol):
 #   { "additionalContext": "text to inject into session context" }
 #
-# Config check logic:
-#   Reuses the same resolution as stop.sh:
+# Config check logic (via config-reader.sh):
 #   1. Read ~/.lacework/plugins/code-security.json
-#   2. Check hooks.stop.overrides[] for longest path prefix match on cwd
-#   3. Fall back to hooks.stop.enabled global default
-#   4. If config missing or malformed, default to enabled
+#   2. Detect format: v2 (hooks.mode/enabled/overrides) or v1 (hooks.stop.*)
+#   3. Resolve SCAN_MODE and SCAN_ENABLED for the given cwd
+#   4. If config missing or malformed, default to pre-commit mode, enabled
 
 # --- Require jq ---
 # All output paths use jq to produce valid JSON. If jq is missing, output empty
