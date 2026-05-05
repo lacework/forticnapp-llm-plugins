@@ -181,7 +181,7 @@ create_plugin_config() {
     # v1 config exists — migrate to v2 with mode selection
     echo "Migrating plugin config to v2 format..." >&2
     local old_enabled old_overrides
-    old_enabled=$(jq -r '.hooks.stop.enabled // true' "$config_file" 2>/dev/null)
+    old_enabled=$(jq -r '.hooks.stop | if .enabled == null then true else .enabled end' "$config_file" 2>/dev/null)
     old_overrides=$(jq -c '.hooks.stop.overrides // []' "$config_file" 2>/dev/null)
   fi
 

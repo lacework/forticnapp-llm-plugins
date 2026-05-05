@@ -147,7 +147,7 @@ is_related_to_staged() {
   # Strategy 1: exact file match
   while IFS= read -r rel; do
     [ -z "$rel" ] && continue
-    if [ "$finding_path" = "$rel" ] || [[ "$finding_path" == *"$rel" ]]; then
+    if [ "$finding_path" = "$rel" ]; then
       return 0
     fi
   done < "$STAGED_RELATIVE"
