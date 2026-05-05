@@ -87,6 +87,33 @@ else
 fi
 rm -rf "$TEMP_HOME"
 
+# --- v2 config, globally disabled ignores overrides (kill switch) ---
+echo "--- v2 config, globally disabled ignores overrides ---"
+TEMP_HOME=$(mktemp -d)
+mkdir -p "$TEMP_HOME/.lacework/plugins"
+cat > "$TEMP_HOME/.lacework/plugins/code-security.json" << 'EOF'
+{
+  "hooks": {
+    "mode": "pre-commit",
+    "enabled": false,
+    "overrides": [
+      { "path": "/opt/enabled-repo", "enabled": true }
+    ]
+  }
+}
+EOF
+RESULT=$(HOME="$TEMP_HOME" bash -c "
+  source '$PLUGIN_ROOT/scripts/config-reader.sh'
+  resolve_config '/opt/enabled-repo'
+  echo \"MODE=\$SCAN_MODE ENABLED=\$SCAN_ENABLED\"
+" 2>/dev/null)
+if echo "$RESULT" | grep -q "ENABLED=false"; then
+  pass "v2 globally disabled ignores override (kill switch)"
+else
+  fail "v2 globally disabled should ignore override (got $RESULT)"
+fi
+rm -rf "$TEMP_HOME"
+
 # --- v2 config, per-repo override disabled ---
 echo "--- v2 config, per-repo override disabled ---"
 TEMP_HOME=$(mktemp -d)

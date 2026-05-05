@@ -38,26 +38,44 @@ resolve_config() {
   if [ -n "$has_mode" ]; then
     # --- v2 format ---
     SCAN_MODE="$has_mode"
-    # Note: jq's // operator treats false as empty, so we use
-    # if/then/else instead of // to correctly handle enabled:false
+
+    # Global kill switch: if hooks.enabled is explicitly false, scanning is
+    # off everywhere — overrides are ignored. This is an absolute off switch.
+    # Note: jq's // operator treats false as empty, so we use if/then/else.
+    local global_enabled
+    global_enabled=$(jq -r 'if .hooks.enabled == null then "true" else (.hooks.enabled | tostring) end' "$config_file" 2>/dev/null)
+    if [ "$global_enabled" = "false" ]; then
+      SCAN_ENABLED="false"
+      return 0
+    fi
+
+    # Global is enabled — check per-repo overrides (longest prefix match wins)
     SCAN_ENABLED=$(jq -r --arg cwd "$cwd" '
       .hooks as $h |
-      (if $h.enabled == null then true else $h.enabled end) as $global |
       [ $h.overrides[]? | select(.path != null) | .path as $p |
         select($cwd | startswith(($p | rtrimstr("/")))) ] |
-      sort_by(.path | length) | last // { "enabled": $global } |
-      if .enabled == null then $global else .enabled end
+      sort_by(.path | length) | last // null |
+      if . == null then "true" elif .enabled == null then "true" else (.enabled | tostring) end
     ' "$config_file" 2>/dev/null)
   else
     # --- v1 format (legacy) ---
     SCAN_MODE="post-task"
+
+    # Same global kill switch for v1
+    local global_enabled_v1
+    global_enabled_v1=$(jq -r 'if .hooks.stop.enabled == null then "true" else (.hooks.stop.enabled | tostring) end' "$config_file" 2>/dev/null)
+    if [ "$global_enabled_v1" = "false" ]; then
+      SCAN_ENABLED="false"
+      return 0
+    fi
+
+    # Global is enabled — check per-repo overrides
     SCAN_ENABLED=$(jq -r --arg cwd "$cwd" '
       .hooks.stop as $stop |
-      (if $stop.enabled == null then true else $stop.enabled end) as $global |
       [ $stop.overrides[]? | select(.path != null) | .path as $p |
         select($cwd | startswith(($p | rtrimstr("/")))) ] |
-      sort_by(.path | length) | last // { "enabled": $global } |
-      if .enabled == null then $global else .enabled end
+      sort_by(.path | length) | last // null |
+      if . == null then "true" elif .enabled == null then "true" else (.enabled | tostring) end
     ' "$config_file" 2>/dev/null)
   fi
 
