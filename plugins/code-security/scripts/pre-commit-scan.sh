@@ -91,9 +91,10 @@ SCAN_PATH="$HOOK_CWD"
 COMMIT_FILES=$(cd "$SCAN_PATH" && git diff --cached --name-only 2>/dev/null)
 
 # 2. Extract files from git add in the command chain (handles "git add file1 file2 && git commit")
-#    Captures file args after "git add" up to the next && or ; or end of string.
-#    Excludes flags like -A, -u, --all, -p, -i, -f, --force
-GIT_ADD_FILES=$(echo "$COMMAND" | grep -oE 'git\s+add\s+[^;&]+' | sed 's/git\s*add\s*//' | tr ' ' '\n' | grep -v '^-' | grep -v '^$')
+#    Captures everything after "git add " up to the next && or ; or end of string.
+#    Excludes flags (words starting with -) and empty lines.
+#    Uses sed with explicit spaces (not \s) for macOS compatibility.
+GIT_ADD_FILES=$(echo "$COMMAND" | grep -oE 'git +add +[^;&]+' | sed 's/git *add *//' | tr ' ' '\n' | grep -v '^-' | grep -v '^$')
 
 # If git add uses -A or --all or ., treat as "all modified files in repo"
 if echo "$COMMAND" | grep -qE 'git\s+add\s+(-A|--all|\.)'; then
