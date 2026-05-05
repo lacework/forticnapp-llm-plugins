@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-commit-scan.sh",
-            "timeout": 300
+            "timeout": 1200
           }
         ]
       }
