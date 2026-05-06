@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install jq
+        run: |
+          if ! command -v jq &>/dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
+      - name: Run config-reader tests
+        run: bash plugins/code-security/tests/test-config-reader.sh
+
+      - name: Run pre-commit-scan tests
+        run: bash plugins/code-security/tests/test-pre-commit-scan.sh
+
+      - name: Run stop hook tests
+        run: bash plugins/code-security/tests/test-stop.sh
+
+      - name: Run session-start tests
+        run: bash plugins/code-security/tests/test-session-start.sh
