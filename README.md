@@ -21,19 +21,26 @@ See each plugin's README for setup and configuration details.
 
 ## Releases
 
-Releases are managed automatically via GitHub Actions:
+This repo uses two branches:
 
-- **Auto-release**: Every push to `main` triggers a version bump and release. The bump type is determined from [conventional commit](https://www.conventionalcommits.org/) prefixes:
+- **`main`** — release branch. Users install from here. Protected (requires PRs).
+- **`dev`** — development branch (default). All feature/fix PRs target `dev`.
 
-  | Commit prefix | Version bump |
-  |---|---|
-  | `feat!:`, `fix!:` (breaking change) | Major (`1.0.0` → `2.0.0`) |
-  | `feat:` | Minor (`1.0.0` → `1.1.0`) |
-  | `fix:`, `chore:`, `refactor:`, etc. | Patch (`1.0.0` → `1.0.1`) |
+### How releases work
 
-- **Manual release**: Go to **Actions → Release → Run workflow** and enter a specific version (e.g. `2.1.0`) to cut a release at an exact version. Use this to skip ahead, backport, or hotfix.
+1. **Development:** PRs merge to `dev`. Tests run automatically on every PR. Version is bumped automatically on each merge based on [conventional commit](https://www.conventionalcommits.org/) prefixes:
 
-Each release publishes a `.zip` artifact and updates the install command in the release notes. Available versions are listed on the [Releases](../../releases) page.
+   | Commit prefix | Version bump |
+   |---|---|
+   | `feat!:`, `fix!:` (breaking change) | Major (`1.0.0` → `2.0.0`) |
+   | `feat:` | Minor (`1.0.0` → `1.1.0`) |
+   | `fix:`, `chore:`, `refactor:`, etc. | Patch (`1.0.0` → `1.0.1`) |
+
+2. **Release:** A repo owner creates a PR from `dev` → `main`. When merged, a GitHub Release is created automatically with a `.zip` artifact.
+
+3. **Manual override:** Go to **Actions → Release → Run workflow** and enter a specific version for hotfixes.
+
+Available versions are listed on the [Releases](../../releases) page.
 
 ## Adding a New Plugin
 
@@ -41,3 +48,4 @@ Each release publishes a `.zip` artifact and updates the install command in the 
 2. Add `.claude-plugin/plugin.json` with name, version, description
 3. Add hooks, skills, and scripts as needed
 4. Register the plugin in `.claude-plugin/marketplace.json` with `"source": "./plugins/<plugin-name>"`
+5. Submit a PR targeting `dev` (the default branch)
