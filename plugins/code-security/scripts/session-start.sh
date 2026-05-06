@@ -27,12 +27,11 @@
 # Output format (Claude Code SessionStart hook protocol):
 #   { "additionalContext": "text to inject into session context" }
 #
-# Config check logic:
-#   Reuses the same resolution as stop.sh:
+# Config check logic (via config-reader.sh):
 #   1. Read ~/.lacework/plugins/code-security.json
-#   2. Check hooks.stop.overrides[] for longest path prefix match on cwd
-#   3. Fall back to hooks.stop.enabled global default
-#   4. If config missing or malformed, default to enabled
+#   2. Detect format: v2 (hooks.mode/enabled/overrides) or v1 (hooks.stop.*)
+#   3. Resolve SCAN_MODE and SCAN_ENABLED for the given cwd
+#   4. If config missing or malformed, default to pre-commit mode, enabled
 
 # --- Require jq ---
 # All output paths use jq to produce valid JSON. If jq is missing, output empty
@@ -45,28 +44,16 @@ fi
 # --- Read hook input ---
 HOOK_INPUT=$(cat)
 
-# --- Check if scanning is enabled for this repo ---
-# Uses the same config file and resolution logic as stop.sh.
-# If scanning is disabled, we skip context injection — no point telling Claude
-# about security scanning if it's turned off for this repo.
-PLUGIN_CONFIG="$HOME/.lacework/plugins/code-security.json"
-if [ -f "$PLUGIN_CONFIG" ] && command -v jq &>/dev/null; then
-  HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
-  HOOK_CWD="${HOOK_CWD%/}"
+# --- Read config ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/config-reader.sh"
 
-  ENABLED=$(jq -r --arg cwd "$HOOK_CWD" '
-    .hooks.stop as $stop |
-    ($stop.enabled // true) as $global |
-    [ $stop.overrides[]? | select(.path != null) | .path as $p |
-      select($cwd | startswith(($p | rtrimstr("/")))) ] |
-    sort_by(.path | length) | last // { "enabled": $global } | .enabled
-  ' "$PLUGIN_CONFIG" 2>/dev/null)
+HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+resolve_config "$HOOK_CWD"
 
-  if [ "$ENABLED" = "false" ]; then
-    # Scanning disabled for this repo — inject nothing
-    echo '{}'
-    exit 0
-  fi
+if [ "$SCAN_ENABLED" = "false" ]; then
+  echo '{}'
+  exit 0
 fi
 
 # --- Check if Lacework CLI is installed ---
@@ -79,11 +66,16 @@ if ! command -v lacework &>/dev/null; then
 fi
 
 # --- Inject security context ---
-# This message becomes part of Claude's system context for the entire session.
-# It is NOT shown to the user — it shapes Claude's behavior silently.
+# Adjust the scanning description based on the active mode.
+if [ "$SCAN_MODE" = "pre-commit" ]; then
+  SCAN_DESC="Security scanning: IaC and SCA scans run automatically before git commit. Critical/High findings in staged files will block the commit until resolved."
+else
+  SCAN_DESC="Security scanning: IaC and SCA scans run automatically after every task. Critical/High findings in changed files will block until resolved."
+fi
+
 CONTEXT="Fortinet Code Security is active in this session.
 
-Security scanning: IaC and SCA scans run automatically after every task. Critical/High findings in changed files will block until resolved.
+${SCAN_DESC}
 
 When writing infrastructure code or modifying dependencies:
 - Prefer restrictive defaults (least privilege, no public access, encrypted by default)

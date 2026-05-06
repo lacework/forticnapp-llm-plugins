@@ -48,6 +48,17 @@ Credentials are resolved in this order:
 
 ## How It Works
 
+### Scanning Modes
+
+The plugin supports two scanning modes. Choose during setup (`/fortinet:cli-setup`) or switch anytime via `/fortinet:settings`.
+
+| | Pre-commit (default) | Post-task |
+|---|---|---|
+| **When** | Before `git commit` | After every Claude Code task |
+| **Scans** | Staged files only | All files changed in session |
+| **Blocking** | Commit rejected | Claude re-invokes to fix |
+| **Hook** | PreToolUse (Bash matcher) | Stop |
+
 ### Security Context (SessionStart Hook)
 
 When a Claude Code session starts, the plugin injects security awareness context into the conversation. This serves two purposes:
@@ -89,23 +100,34 @@ Configure plugin settings — enable or disable automatic scanning globally or p
 Session starts
   └─> scripts/session-start.sh fires
         └─> Scanning disabled or CLI missing? → no context injected
-        └─> Scanning enabled? → inject security awareness context
+        └─> Scanning enabled? → inject security awareness context (mode-aware)
 
 First time setup
   └─> User runs /fortinet:cli-setup
         └─> scripts/install-lw.sh runs
         └─> Installs jq, Lacework CLI, configures credentials, installs components
+        └─> User selects scanning mode (pre-commit or post-task)
 
 Developer prompts Claude → Claude writes/edits files (with security awareness)
 
-Claude Code task completes
-  └─> scripts/stop.sh fires
-        └─> No changed files? → exit 0 (silent)
-        └─> Changed files found? → lacework iac scan & lacework sca scan &
-        └─> Wait for scans...
-        └─> Filter findings to changed files
-        └─> No findings in changed files → exit 0
-        └─> Critical/high in changed files → exit 2 → Claude auto-remediates
+Pre-commit mode:
+  Claude runs git commit
+    └─> scripts/pre-commit-scan.sh fires (PreToolUse hook)
+          └─> Not a git commit? → allow
+          └─> No staged files? → allow
+          └─> Scan staged files → lacework iac scan & lacework sca scan &
+          └─> Filter findings to staged files
+          └─> No Critical/High in staged files → allow commit
+          └─> Critical/High in staged files → block commit → Claude fixes or adds exception → retry
+
+Post-task mode:
+  Claude Code task completes
+    └─> scripts/stop.sh fires
+          └─> No changed files? → exit 0 (silent)
+          └─> Changed files found? → lacework iac scan & lacework sca scan &
+          └─> Filter findings to changed files
+          └─> No findings in changed files → exit 0
+          └─> Critical/high in changed files → exit 2 → Claude auto-remediates
 ```
 
 ## Credential Strategy
@@ -233,6 +255,16 @@ bash plugins/code-security/tests/test-stop.sh
 | macOS without Homebrew | curl installer |
 | Linux (x86_64, arm64) | curl installer |
 | Windows | Not supported in Phase 1 |
+
+## Known Limitations
+
+### Pre-commit mode and subagents
+
+Claude Code's `PreToolUse` hooks do not fire for tool calls made by subagents spawned via the Agent tool ([anthropics/claude-code#34692](https://github.com/anthropics/claude-code/issues/34692)). This means if a subagent runs `git commit`, the pre-commit scan will not trigger.
+
+**Workaround:** Have subagents make code changes (Write/Edit) without committing. The main session stages and commits after reviewing, which triggers the pre-commit scan normally.
+
+This is a Claude Code platform limitation, not a plugin issue. The post-task mode (Stop hook) has the same limitation — it fires on main session task completion, not on individual subagent completions.
 
 ## Requirements
 

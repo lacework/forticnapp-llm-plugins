@@ -40,6 +40,8 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [[ "$COMMAND" =~ scripts/stop\.sh ]] && approve
 [[ "$COMMAND" =~ scripts/install-lw\.sh ]] && approve
 [[ "$COMMAND" =~ scripts/session-start\.sh ]] && approve
+[[ "$COMMAND" =~ scripts/pre-commit-scan\.sh ]] && approve
+[[ "$COMMAND" =~ scripts/config-reader\.sh ]] && approve
 
 # jq for JSON parsing (used by stop hook and skills)
 [[ "$COMMAND" =~ ^jq\  ]] && approve
@@ -51,6 +53,9 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 # Hash utilities for scan marker dedup
 [[ "$COMMAND" =~ ^sha256sum\  ]] && approve
 [[ "$COMMAND" =~ ^shasum\  ]] && approve
+
+# git diff for staged file listing (used by pre-commit scan)
+[[ "$COMMAND" =~ ^git\ diff\ --cached ]] && approve
 
 # Temp directory creation (used by code-review skill and stop hook)
 [[ "$COMMAND" =~ ^mktemp\  ]] && approve
