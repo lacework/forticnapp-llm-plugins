@@ -3,21 +3,17 @@ name: Release
 on:
   push:
     branches: [main]
-    paths:
-      - 'plugins/**'
-      - '!plugins/**/*.md'
-      - '.claude-plugin/**'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 2.1.0). Overrides auto-bump.'
-        required: true
+        description: 'Version override (e.g. 2.1.0). Only for hotfixes.'
+        required: false
         type: string
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Prevent the version-bump commit from triggering another release
+    # [skip ci] prevents loop when workflow_dispatch commits a version override
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     permissions:
       contents: write
@@ -27,64 +23,46 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Get current version
-        id: current
-        run: |
-          echo "version=$(jq -r '.version' plugins/code-security/.claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve target version
-        id: target
+      - name: Resolve version
+        id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
-            # Manual release — use the provided version exactly
-            NEW_VERSION="${{ inputs.version }}"
-            # Validate semver format
-            if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              echo "ERROR: '$NEW_VERSION' is not a valid semver (expected X.Y.Z)" >&2
+            # Manual override — validate and use
+            V="${{ inputs.version }}"
+            if ! echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "ERROR: '$V' is not valid semver (expected X.Y.Z)" >&2
               exit 1
             fi
+
+            # Update version files for manual override
+            jq --arg v "$V" '.version = $v' plugins/code-security/.claude-plugin/plugin.json > tmp.json && mv tmp.json plugins/code-security/.claude-plugin/plugin.json
+            jq --arg v "$V" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
+            git add plugins/code-security/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+            git commit -m "chore: release v${V} [skip ci]" || true
+            git push || true
           else
-            # Auto-release — determine bump from conventional commits since last tag
-            CURRENT="${{ steps.current.outputs.version }}"
-            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-
-            if [ -n "$LAST_TAG" ]; then
-              SUBJECTS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s")
-            else
-              SUBJECTS=$(git log --pretty=format:"%s")
-            fi
-
-            BUMP="patch"
-            if echo "$SUBJECTS" | grep -qE '^(feat|fix|refactor|perf)(\(.+\))?!:'; then
-              BUMP="major"
-            elif echo "$SUBJECTS" | grep -qE '^feat(\(.+\))?:'; then
-              BUMP="minor"
-            fi
-
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-            case "$BUMP" in
-              major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
-              minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
-              patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-            esac
+            # Read version from plugin.json (already bumped on dev, now on main via PR)
+            V=$(jq -r '.version' plugins/code-security/.claude-plugin/plugin.json)
           fi
 
           # Abort if tag already exists
-          if git rev-parse "v${NEW_VERSION}" &>/dev/null; then
-            echo "ERROR: Tag v${NEW_VERSION} already exists" >&2
-            exit 1
+          if git rev-parse "v${V}" &>/dev/null; then
+            echo "Tag v${V} already exists — skipping release" >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Build release notes
+        if: steps.version.outputs.skip != 'true'
         id: notes
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -110,41 +88,34 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Update version in plugin files
+      - name: Create tag
+        if: steps.version.outputs.skip != 'true'
         run: |
-          V="${{ steps.target.outputs.version }}"
-          # Update plugin.json (under plugins/code-security/)
-          jq --arg v "$V" '.version = $v' plugins/code-security/.claude-plugin/plugin.json > tmp.json && mv tmp.json plugins/code-security/.claude-plugin/plugin.json
-          # Update marketplace.json (at root)
-          jq --arg v "$V" '.plugins[0].version = $v' .claude-plugin/marketplace.json > tmp.json && mv tmp.json .claude-plugin/marketplace.json
-
-      - name: Commit version bump and tag
-        run: |
-          V="${{ steps.target.outputs.version }}"
-          git add plugins/code-security/.claude-plugin/plugin.json .claude-plugin/marketplace.json
-          git commit -m "chore: release v${V} [skip ci]"
-          git push
+          V="${{ steps.version.outputs.version }}"
           git tag "v${V}"
           git push origin "v${V}"
 
       - name: Package plugin
+        if: steps.version.outputs.skip != 'true'
         run: |
-          V="${{ steps.target.outputs.version }}"
+          V="${{ steps.version.outputs.version }}"
           VERSIONED_ZIP="forticnapp-llm-plugins-v${V}.zip"
           LATEST_ZIP="forticnapp-llm-plugins.zip"
           zip -r "$VERSIONED_ZIP" \
             .claude-plugin/ \
             plugins/code-security/ \
-            README.md
+            README.md \
+            LICENSE
           cp "$VERSIONED_ZIP" "$LATEST_ZIP"
           echo "versioned_zip=$VERSIONED_ZIP" >> "$GITHUB_ENV"
           echo "latest_zip=$LATEST_ZIP" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
+        if: steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: "v${{ steps.target.outputs.version }}"
-          name: "v${{ steps.target.outputs.version }}"
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}"
           body: ${{ steps.notes.outputs.notes }}
           files: |
             ${{ env.versioned_zip }}
