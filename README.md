@@ -24,7 +24,7 @@ See each plugin's README for setup and configuration details.
 This repo uses two branches:
 
 - **`main`** — release branch. Users install from here. Protected (requires PRs).
-- **`dev`** — development branch (default). All feature/fix PRs target `dev`.
+- **`dev`** — development branch. All feature/fix PRs should target `dev`.
 
 ### How releases work
 
