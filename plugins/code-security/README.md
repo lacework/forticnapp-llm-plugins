@@ -150,6 +150,7 @@ The shared service account MUST be scoped to the Code Security product.
 ```bash
 git clone git@github.com:lacework/forticnapp-llm-plugins.git
 cd forticnapp-llm-plugins
+git checkout dev  # development branch
 
 # Register marketplace and install
 claude plugin marketplace add $PWD
