@@ -11,9 +11,9 @@ on:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    # [skip ci] in commit message prevents loop: version bump commit
-    # touches plugins/** which would re-trigger this workflow
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # Prevent loop: the version bump commit starts with "chore: bump version"
+    # which would re-trigger this workflow since it touches plugins/**
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
     permissions:
       contents: write
 
