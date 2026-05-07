@@ -26,6 +26,8 @@ fi
 # --- Debug logging ---
 LOG_DIR="$HOME/.lacework/logs"
 mkdir -p "$LOG_DIR"
+# Prune log files older than 7 days to prevent unbounded growth
+find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null
 
 # Extract session ID and cwd early for logging context
 SCAN_TMPDIR=$(mktemp -d)
@@ -36,6 +38,11 @@ SESSION_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
 
 # Per-session log file: stop-hook-<session-id>.log
 LOG_FILE="$LOG_DIR/stop-hook-${SESSION_ID:-$(date '+%Y%m%d-%H%M%S')}.log"
+
+# Cap log file at 1MB — keep the last 500 lines if over limit
+if [ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE")" -gt 1048576 ]; then
+  tail -500 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
