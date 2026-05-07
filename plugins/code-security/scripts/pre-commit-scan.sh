@@ -71,6 +71,8 @@ fi
 # --- Debug logging ---
 LOG_DIR="$HOME/.lacework/logs"
 mkdir -p "$LOG_DIR"
+# Prune log files older than 7 days to prevent unbounded growth
+find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null
 LOG_FILE="$LOG_DIR/pre-commit-$(date '+%Y%m%d-%H%M%S').log"
 
 log() {
