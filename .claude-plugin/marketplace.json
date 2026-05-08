@@ -11,7 +11,7 @@
       "name": "code-security",
       "source": "./plugins/code-security",
       "description": "Fortinet Code Security - IaC and SCA scanning for Claude Code",
-      "version": "1.6.0"
+      "version": "1.7.0"
     }
   ]
 }
