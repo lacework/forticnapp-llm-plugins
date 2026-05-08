@@ -83,8 +83,10 @@ When writing infrastructure code or modifying dependencies:
 - Writing secure code upfront avoids remediation loops after the scan
 
 Available security skills:
-- /fortinet:code-review — run a full IaC and SCA security scan on demand
+- /fortinet:code-review — run a security scan on demand AND manage exceptions. Use this skill when users want to add exceptions to suppress findings. It has the full exception format, criteria, and .lacework/codesec.yaml structure.
 - /fortinet:cli-setup — install and configure the Lacework CLI and scanning components
-- /fortinet:settings — enable or disable automatic scanning globally or per repo"
+- /fortinet:settings — enable or disable scanning, switch scanning mode. NOT for exceptions — use /fortinet:code-review for that.
+
+When scan findings are presented, users can fix the code, add exceptions, or leave as is. The /fortinet:code-review skill has the full exception format and instructions."
 
 jq -n --arg ctx "$CONTEXT" '{ additionalContext: $ctx }'

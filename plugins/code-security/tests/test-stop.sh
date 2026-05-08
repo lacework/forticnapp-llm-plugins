@@ -113,13 +113,24 @@ else
   fail "wait loop missing — parallel processes may not be collected"
 fi
 
-# --- Exit code 2 present ---
+# --- Structured JSON output for findings ---
 echo ""
-echo "--- Exit code behavior ---"
+echo "--- Output format ---"
 if grep -q 'exit 2' "$HOOK"; then
   pass "exit 2 present for critical/high findings"
 else
-  fail "exit 2 missing"
+  fail "exit 2 missing for critical/high findings"
+fi
+if grep -q '>&2' "$HOOK"; then
+  pass "findings written to stderr"
+else
+  fail "findings not written to stderr"
+fi
+# Internal instructions should NOT be in stop.sh — they live in the code-review skill
+if grep -q 'INTERNAL INSTRUCTIONS' "$HOOK" || grep -q 'Exception format:' "$HOOK"; then
+  fail "stop.sh still contains internal exception instructions (should be in skill)"
+else
+  pass "no internal instructions in stop.sh output (moved to skill)"
 fi
 
 # --- Temp cleanup present ---
