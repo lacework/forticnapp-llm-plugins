@@ -38,18 +38,18 @@ jobs:
         id: bump
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
-          if [ -n "$LAST_TAG" ]; then
-            SUBJECTS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s")
-          else
-            SUBJECTS=$(git log --pretty=format:"%s")
-          fi
+          # Only look at the commit that triggered this workflow, not the full
+          # history since the last tag. This prevents old feat: commits from
+          # causing repeated minor bumps on every subsequent push.
+          SUBJECT="${{ github.event.head_commit.message }}"
+          # For squash merges, the title is the first line
+          SUBJECT=$(echo "$SUBJECT" | head -1)
 
           BUMP="patch"
-          if echo "$SUBJECTS" | grep -qE '^(feat|fix|refactor|perf)(\(.+\))?!:'; then
+          if echo "$SUBJECT" | grep -qE '^(feat|fix|refactor|perf)(\(.+\))?!:'; then
             BUMP="major"
-          elif echo "$SUBJECTS" | grep -qE '^feat(\(.+\))?:'; then
+          elif echo "$SUBJECT" | grep -qE '^feat(\(.+\))?:'; then
             BUMP="minor"
           fi
 

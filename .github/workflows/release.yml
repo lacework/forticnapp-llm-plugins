@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -13,11 +16,12 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Skip only version-bump bot commits (which start with "chore: bump version").
-    # Do NOT use contains(message, '[skip ci]') — squash merges include the full body
-    # which may contain [skip ci] from version-bump commits on dev, causing the release
-    # workflow to skip when it shouldn't.
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+    # Run on: workflow_dispatch (always), push (skip version-bump commits),
+    # or pull_request closed+merged (skip non-plugin changes like README/.github only)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore: bump version')) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     permissions:
       contents: write
 
@@ -27,12 +31,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      # For pull_request events, check if plugin files changed — skip release
+      # if only README, .github, or docs files were modified
+      - name: Check for plugin changes
+        if: github.event_name == 'pull_request'
+        id: changes
+        run: |
+          CHANGED=$(gh pr diff ${{ github.event.pull_request.number }} --name-only 2>/dev/null || echo "")
+          if echo "$CHANGED" | grep -qE '^(plugins/|\.claude-plugin/)'; then
+            echo "has_plugin_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_plugin_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No plugin file changes — skipping release"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Configure git
+        if: github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Resolve version
+        if: github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true'
         id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
