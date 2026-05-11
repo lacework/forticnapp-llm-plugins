@@ -11,7 +11,7 @@
 #   3. Reads plugin config — exits if mode isn't "pre-commit" or scanning is disabled
 #   4. Gets staged files via git diff --cached --name-only
 #   5. Runs IaC + SCA scans in parallel
-#   6. Filters findings to staged files only (exact match + directory proximity)
+#   6. Filters findings to committed files only (exact file path match)
 #   7. Blocks commit if Critical/High findings exist in staged files
 #
 # Output format (PreToolUse hook protocol):
@@ -71,6 +71,8 @@ fi
 # --- Debug logging ---
 LOG_DIR="$HOME/.lacework/logs"
 mkdir -p "$LOG_DIR"
+# Prune log files older than 7 days to prevent unbounded growth
+find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null
 LOG_FILE="$LOG_DIR/pre-commit-$(date '+%Y%m%d-%H%M%S').log"
 
 log() {
@@ -118,12 +120,6 @@ trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 STAGED_RELATIVE="$SCAN_TMPDIR/staged_relative.txt"
 echo "$COMMIT_FILES" > "$STAGED_RELATIVE"
 
-STAGED_DIRS="$SCAN_TMPDIR/staged_dirs.txt"
-while IFS= read -r rel; do
-  [ -z "$rel" ] && continue
-  dirname "$rel"
-done <<< "$COMMIT_FILES" | sort -u > "$STAGED_DIRS"
-
 # --- Run scans in parallel ---
 log "Starting IaC and SCA scans..."
 PIDS=()
@@ -139,28 +135,18 @@ PIDS+=($!)
 for PID in "${PIDS[@]}"; do wait "$PID"; done
 log "Scans complete."
 
-# --- Helper: check if finding is related to staged files ---
+# --- Helper: check if finding's file path matches a committed file ---
+# Exact match only — finding file must match a committed file exactly.
 is_related_to_staged() {
   local finding_path="$1"
   [ -z "$finding_path" ] && return 1
 
-  # Strategy 1: exact file match
   while IFS= read -r rel; do
     [ -z "$rel" ] && continue
     if [ "$finding_path" = "$rel" ]; then
       return 0
     fi
   done < "$STAGED_RELATIVE"
-
-  # Strategy 2: directory proximity
-  local finding_dir
-  finding_dir=$(dirname "$finding_path")
-  while IFS= read -r staged_dir; do
-    [ -z "$staged_dir" ] && continue
-    if [ "$finding_dir" = "$staged_dir" ]; then
-      return 0
-    fi
-  done < "$STAGED_DIRS"
 
   return 1
 }
@@ -204,12 +190,7 @@ if [ -f "$IAC_FILE" ] && jq empty "$IAC_FILE" 2>/dev/null; then
       if [ "$sev" = "High" ]; then PREEXIST_HIGH=$((PREEXIST_HIGH + 1)); fi
     fi
 
-    echo "**${FINDING_NUM}. [${sev}] ${title}**" >> "$TARGET"
-    echo "   - Resource: \`${resource}\`" >> "$TARGET"
-    echo "   - Location: \`${loc}\`" >> "$TARGET"
-    echo "   - ${desc}" >> "$TARGET"
-    echo "   - Exception ID: \`${policy_id}\`" >> "$TARGET"
-    echo "" >> "$TARGET"
+    echo "- [${sev}] ${title} — ${loc} (${policy_id})" >> "$TARGET"
   done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\((.description // "") | gsub("\n"; " "))§\(.policyId // "")"' "$IAC_FILE" 2>/dev/null)
 
   IAC_MED=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium")] | length' "$IAC_FILE" 2>/dev/null || echo 0)
@@ -257,33 +238,25 @@ if [ -f "$SCA_FILE" ] && jq empty "$SCA_FILE" 2>/dev/null; then
       if [ "$display_sev" = "High" ]; then PREEXIST_HIGH=$((PREEXIST_HIGH + 1)); fi
     fi
 
+    # Format finding
+    sca_title="$rule_id"
+    sca_resource=""
+    exception_id=""
+
     if [ "$category" = "vulnerability" ]; then
-      echo "**${FINDING_NUM}. [${display_sev}] ${rule_id}**" >> "$TARGET"
-      if [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ]; then
-        echo "   - Package: \`${pkg_name}\`" >> "$TARGET"
-      fi
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      if [ -n "$fix_version" ] && [ "$fix_version" != "null" ]; then
-        echo "   - Fix: upgrade to \`${fix_version}\`" >> "$TARGET"
-      fi
-      echo "   - ${desc}" >> "$TARGET"
-      echo "   - Exception ID: \`CVE:${rule_id}\`" >> "$TARGET"
+      [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ] && sca_resource="$pkg_name"
+      exception_id="CVE:${rule_id}"
     elif [ "$category" = "license" ]; then
-      echo "**${FINDING_NUM}. [${display_sev}] License: ${rule_id}**" >> "$TARGET"
-      if [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ]; then
-        echo "   - Package: \`${pkg_name}\`" >> "$TARGET"
-      fi
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      echo "   - ${desc}" >> "$TARGET"
+      sca_title="License: ${rule_id}"
+      [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ] && sca_resource="$pkg_name"
+      exception_id=""
     else
-      echo "**${FINDING_NUM}. [${display_sev}] ${rule_id}**" >> "$TARGET"
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      echo "   - ${desc}" >> "$TARGET"
-      if [ -n "$fingerprint" ] && [ "$fingerprint" != "null" ]; then
-        echo "   - Exception ID: \`finding:${fingerprint}\`" >> "$TARGET"
-      fi
+      [ -n "$fingerprint" ] && [ "$fingerprint" != "null" ] && exception_id="finding:${fingerprint}"
     fi
-    echo "" >> "$TARGET"
+
+    sca_pkg_info=""
+    [ -n "$sca_resource" ] && sca_pkg_info=" (${sca_resource})"
+    echo "- [${display_sev}] ${sca_title}${sca_pkg_info} — ${loc} (${exception_id:-—})" >> "$TARGET"
   done < <(jq -r '
     .runs[0].results[]? |
     select((.suppressions // []) | length == 0) |
@@ -305,78 +278,25 @@ fi
 # --- Block the commit ---
 STAGED_FINDINGS_TEXT=$(cat "$STAGED_FINDINGS")
 
-# Build staged files list for display
-STAGED_DISPLAY=$(echo "$COMMIT_FILES" | head -5 | sed 's/^/- /')
-STAGED_COUNT=$(echo "$COMMIT_FILES" | wc -l | tr -d ' ')
-if [ "$STAGED_COUNT" -gt 5 ]; then
-  STAGED_DISPLAY="${STAGED_DISPLAY}
-- ... and $((STAGED_COUNT - 5)) more"
-fi
+MESSAGE="Fortinet Code Security scanned your staged files and detected ${STAGED_CRIT} Critical, ${STAGED_HIGH} High security issues. The commit has been blocked.
 
-# Check if codesec.yaml exists
-CODESEC_FILE="${SCAN_PATH}/.lacework/codesec.yaml"
-if [ -f "$CODESEC_FILE" ]; then
-  CODESEC_STATUS="The file \`.lacework/codesec.yaml\` already exists. Add exception IDs to the appropriate \`exceptions\` list."
-else
-  CODESEC_STATUS="The file \`.lacework/codesec.yaml\` does not exist yet. Create it at \`.lacework/codesec.yaml\` with the structure shown below."
-fi
+Files staged: $(echo "$COMMIT_FILES" | tr '\n' ', ' | sed 's/,$//')
 
-MESSAGE="## Fortinet Code Security — Commit Blocked
-
-Security scan found **${STAGED_CRIT} Critical, ${STAGED_HIGH} High** issues in your staged files. The commit has been blocked.
-
-**Staged files scanned:**
-${STAGED_DISPLAY}
-
-### Issues in staged files
-
+Findings:
 ${STAGED_FINDINGS_TEXT}"
 
 if [ "$PREEXIST_TOTAL" -gt 0 ]; then
   MESSAGE="${MESSAGE}
-### Pre-existing issues (not in staged files)
-
-${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings exist in other files. Run \`/fortinet:code-review\` for the full report.
+Pre-existing issues (not in staged files):
+${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings in other files. Run /fortinet:code-review for the full report.
 "
 fi
 
 MESSAGE="${MESSAGE}
-For each finding you can either **fix** the issue in code or **add an exception**, then retry the commit.
-
-<!-- INTERNAL INSTRUCTIONS (do not show to user):
-
-When the user chooses to add an exception, use the Exception ID shown for each finding.
-
-How to add exceptions: ${CODESEC_STATUS}
-
-Exception format: <criteria>:<value>:<reason>
-
-Criteria (case-sensitive): policy, CVE, CWE, path, file, fingerprint, finding
-Reasons (case-sensitive): Accepted risk, Compensating Controls, False positive, Patch incoming
-
-For IaC findings, add to default.iac.scan.exceptions in .lacework/codesec.yaml
-For SCA findings, add to default.sca.scan.exceptions in .lacework/codesec.yaml
-
-Example .lacework/codesec.yaml structure:
-default:
-    iac:
-        enabled: true
-        scan:
-            exceptions:
-                - \"policy:<policy-id>:<reason>\"
-                - \"path:<glob-pattern>:<reason>\"
-                - \"file:<file-path>:<reason>\"
-    sca:
-        enabled: true
-        scan:
-            exceptions:
-                - \"CVE:<cve-id>:<reason>\"
-                - \"path:<glob-pattern>:<reason>\"
-                - \"CWE:<cwe-id>:<reason>\"
-
-Important: Only add exceptions the user explicitly approves. Do not auto-suppress findings.
-After fixing or adding exceptions, retry the git commit command.
--->"
+What would you like to do?
+1. Fix the issues - update the code to resolve the security findings
+2. Add exceptions - suppress specific findings via .lacework/codesec.yaml
+3. Skip for now - leave findings as-is and continue working"
 
 log "EXIT(block): ${STAGED_CRIT} Critical, ${STAGED_HIGH} High findings in staged files"
 

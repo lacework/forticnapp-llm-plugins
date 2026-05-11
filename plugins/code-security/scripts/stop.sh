@@ -26,6 +26,8 @@ fi
 # --- Debug logging ---
 LOG_DIR="$HOME/.lacework/logs"
 mkdir -p "$LOG_DIR"
+# Prune log files older than 7 days to prevent unbounded growth
+find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null
 
 # Extract session ID and cwd early for logging context
 SCAN_TMPDIR=$(mktemp -d)
@@ -36,6 +38,11 @@ SESSION_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
 
 # Per-session log file: stop-hook-<session-id>.log
 LOG_FILE="$LOG_DIR/stop-hook-${SESSION_ID:-$(date '+%Y%m%d-%H%M%S')}.log"
+
+# Cap log file at 1MB — keep the last 500 lines if over limit
+if [ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE")" -gt 1048576 ]; then
+  tail -500 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -101,15 +108,6 @@ while IFS= read -r f; do
   echo "$rel" >> "$CHANGED_RELATIVE"
 done <<< "$CHANGED"
 
-# Build list of changed file directories for proximity matching
-CHANGED_DIRS="$SCAN_TMPDIR/changed_dirs.txt"
-while IFS= read -r rel; do
-  [ -z "$rel" ] && continue
-  dirname "$rel" >> "$CHANGED_DIRS"
-done < "$CHANGED_RELATIVE"
-# Deduplicate
-sort -u "$CHANGED_DIRS" -o "$CHANGED_DIRS"
-
 PIDS=()
 SCAN_TYPE="IaC+SCA"
 
@@ -129,31 +127,18 @@ PIDS+=($!)
 for PID in "${PIDS[@]}"; do wait "$PID"; done
 log "Scans complete. IaC JSON: $([ -f "$SCAN_TMPDIR/iac.json" ] && echo "exists" || echo "missing"), SCA SARIF: $([ -f "$SCAN_TMPDIR/sca.sarif" ] && echo "exists" || echo "missing")"
 
-# --- Helper: check if a finding's file path is related to changed files ---
-# Uses two strategies:
-# 1. Exact match: finding file path matches a changed file
-# 2. Directory proximity: finding file is in the same directory as a changed file
+# --- Helper: check if a finding's file path matches a changed file ---
+# Exact match only — finding file path must match a changed file exactly.
 is_related_to_changes() {
   local finding_path="$1"
   [ -z "$finding_path" ] && return 1
 
-  # Strategy 1: exact file match
   while IFS= read -r rel; do
     [ -z "$rel" ] && continue
     if [ "$finding_path" = "$rel" ]; then
       return 0
     fi
   done < "$CHANGED_RELATIVE"
-
-  # Strategy 2: directory proximity — finding is in same dir as a changed file
-  local finding_dir
-  finding_dir=$(dirname "$finding_path")
-  while IFS= read -r changed_dir; do
-    [ -z "$changed_dir" ] && continue
-    if [ "$finding_dir" = "$changed_dir" ]; then
-      return 0
-    fi
-  done < "$CHANGED_DIRS"
 
   return 1
 }
@@ -201,12 +186,7 @@ if [ -f "$IAC_FILE" ] && jq empty "$IAC_FILE" 2>/dev/null; then
       if [ "$sev" = "High" ]; then PREEXIST_HIGH=$((PREEXIST_HIGH + 1)); fi
     fi
 
-    echo "**${FINDING_NUM}. [${sev}] ${title}**" >> "$TARGET"
-    echo "   - Resource: \`${resource}\`" >> "$TARGET"
-    echo "   - Location: \`${loc}\`" >> "$TARGET"
-    echo "   - ${desc}" >> "$TARGET"
-    echo "   - Exception ID: \`${policy_id}\`" >> "$TARGET"
-    echo "" >> "$TARGET"
+    echo "- [${sev}] ${title} — ${loc} (${policy_id})" >> "$TARGET"
   done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\((.description // "") | gsub("\n"; " "))§\(.policyId // "")"' "$IAC_FILE" 2>/dev/null)
 
   # Count medium findings separately (pre-existing only, never shown in detail)
@@ -271,35 +251,25 @@ if [ -f "$SCA_FILE" ] && jq empty "$SCA_FILE" 2>/dev/null; then
       if [ "$display_sev" = "High" ]; then PREEXIST_HIGH=$((PREEXIST_HIGH + 1)); fi
     fi
 
-    # Format output based on category
+    # Format finding
+    sca_title="$rule_id"
+    sca_resource=""
+    exception_id=""
+
     if [ "$category" = "vulnerability" ]; then
-      echo "**${FINDING_NUM}. [${display_sev}] ${rule_id}**" >> "$TARGET"
-      if [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ]; then
-        echo "   - Package: \`${pkg_name}\`" >> "$TARGET"
-      fi
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      if [ -n "$fix_version" ] && [ "$fix_version" != "null" ]; then
-        echo "   - Fix: upgrade to \`${fix_version}\`" >> "$TARGET"
-      fi
-      echo "   - ${desc}" >> "$TARGET"
-      echo "   - Exception ID: \`CVE:${rule_id}\`" >> "$TARGET"
+      [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ] && sca_resource="$pkg_name"
+      exception_id="CVE:${rule_id}"
     elif [ "$category" = "license" ]; then
-      echo "**${FINDING_NUM}. [${display_sev}] License: ${rule_id}**" >> "$TARGET"
-      if [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ]; then
-        echo "   - Package: \`${pkg_name}\`" >> "$TARGET"
-      fi
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      echo "   - ${desc}" >> "$TARGET"
+      sca_title="License: ${rule_id}"
+      [ -n "$pkg_name" ] && [ "$pkg_name" != "null" ] && sca_resource="$pkg_name"
+      exception_id=""
     else
-      # SAST, secrets, or other finding types
-      echo "**${FINDING_NUM}. [${display_sev}] ${rule_id}**" >> "$TARGET"
-      echo "   - Location: \`${loc}\`" >> "$TARGET"
-      echo "   - ${desc}" >> "$TARGET"
-      if [ -n "$fingerprint" ] && [ "$fingerprint" != "null" ]; then
-        echo "   - Exception ID: \`finding:${fingerprint}\`" >> "$TARGET"
-      fi
+      [ -n "$fingerprint" ] && [ "$fingerprint" != "null" ] && exception_id="finding:${fingerprint}"
     fi
-    echo "" >> "$TARGET"
+
+    sca_pkg_info=""
+    [ -n "$sca_resource" ] && sca_pkg_info=" (${sca_resource})"
+    echo "- [${display_sev}] ${sca_title}${sca_pkg_info} — ${loc} (${exception_id:-—})" >> "$TARGET"
   done < <(jq -r '
     .runs[0].results[]? |
     # Filter out suppressed/excepted findings (equivalent to isSuppressed in IaC)
@@ -316,14 +286,6 @@ log "Findings — Changed files: ${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High 
 CHANGED_FINDINGS_TEXT=$(cat "$CHANGED_FINDINGS")
 PREEXIST_FINDINGS_TEXT=$(cat "$PREEXIST_FINDINGS")
 
-# Check if codesec.yaml already exists
-CODESEC_FILE="${SCAN_PATH}/.lacework/codesec.yaml"
-if [ -f "$CODESEC_FILE" ]; then
-  CODESEC_STATUS="The file \`.lacework/codesec.yaml\` already exists. Add exception IDs to the appropriate \`exceptions\` list."
-else
-  CODESEC_STATUS="The file \`.lacework/codesec.yaml\` does not exist yet. Create it at \`.lacework/codesec.yaml\` with the structure shown below."
-fi
-
 # Build the changed files list for display
 if [ "$CHANGED_FILES_COUNT" -le 5 ]; then
   FILES_LIST=$(echo "$CHANGED_FILES_DISPLAY" | sed 's/^/- /')
@@ -333,69 +295,32 @@ else
 - ... and $((CHANGED_FILES_COUNT - 5)) more"
 fi
 
-# --- Determine exit code and message based on changed-file findings ---
+# --- Build output ---
+# Output to stderr with exit 2: Claude Code re-invokes Claude with the stderr
+# content as context. Claude sees the findings and presents them nicely to the user.
+# No internal instructions here — exception handling details live in the
+# /fortinet:code-review skill, which Claude knows about via SessionStart context.
+
 if [ "$CHANGED_TOTAL" -gt 0 ]; then
-  MESSAGE="<!-- INSTRUCTIONS FOR CLAUDE:
-1. First, briefly summarize the changes you completed for the user
-2. Then say: Fortinet Code Security scanned the modified files and found security issues that need attention
-3. Present the 'Issues in your changed files' section below
-4. If there are pre-existing issues, mention them briefly as FYI
-5. Ask the user what they would like to do about the findings in their changed files
--->
+  MESSAGE="Fortinet Code Security scanned your changes and detected ${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High security issues.
 
-## Fortinet Code Security Scan
+Files changed: $(echo "$CHANGED_FILES_DISPLAY" | tr '\n' ', ' | sed 's/,$//')
 
-**Files scanned:**
-${FILES_LIST}
-
-### Issues in your changed files (${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High)
-
+Findings:
 ${CHANGED_FINDINGS_TEXT}"
 
   if [ "$PREEXIST_TOTAL" -gt 0 ]; then
     MESSAGE="${MESSAGE}
-### Pre-existing issues (not related to your changes)
-
-${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings exist in other files. Run \`/fortinet:code-review\` for the full report.
+Pre-existing issues (not related to your changes):
+${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings in other files. Run /fortinet:code-review for the full report.
 "
   fi
 
   MESSAGE="${MESSAGE}
-For each finding you can either **fix** the issue in code or **add an exception**. What would you like to do?
-
-<!-- INTERNAL INSTRUCTIONS (do not show to user):
-
-When the user chooses to add an exception, use the Exception ID shown for each finding.
-
-How to add exceptions: ${CODESEC_STATUS}
-
-Exception format: <criteria>:<value>:<reason>
-
-Criteria (case-sensitive): policy, CVE, CWE, path, file, fingerprint, finding
-Reasons (case-sensitive): Accepted risk, Compensating Controls, False positive, Patch incoming
-
-For IaC findings, add to default.iac.scan.exceptions in .lacework/codesec.yaml
-For SCA findings, add to default.sca.scan.exceptions in .lacework/codesec.yaml
-
-Example .lacework/codesec.yaml structure:
-default:
-    iac:
-        enabled: true
-        scan:
-            exceptions:
-                - \"policy:<policy-id>:<reason>\"
-                - \"path:<glob-pattern>:<reason>\"
-                - \"file:<file-path>:<reason>\"
-    sca:
-        enabled: true
-        scan:
-            exceptions:
-                - \"CVE:<cve-id>:<reason>\"
-                - \"path:<glob-pattern>:<reason>\"
-                - \"CWE:<cwe-id>:<reason>\"
-
-Important: Only add exceptions the user explicitly approves. Do not auto-suppress findings.
--->"
+What would you like to do?
+1. Fix the issues - update the code to resolve the security findings
+2. Add exceptions - suppress specific findings via .lacework/codesec.yaml
+3. Skip for now - leave findings as-is and continue working"
 
   touch "$MARKER_FILE"
   log "EXIT(2): ${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High findings in changed files — blocking"
@@ -403,20 +328,7 @@ Important: Only add exceptions the user explicitly approves. Do not auto-suppres
   exit 2
 
 elif [ "$PREEXIST_TOTAL" -gt 0 ]; then
-  MESSAGE="<!-- INSTRUCTIONS FOR CLAUDE:
-1. First, summarize the changes you completed
-2. Briefly mention: Fortinet Code Security scanned your changes and found no new issues
-3. Mention the pre-existing findings as an FYI — do NOT present them as action items
--->
-
-## Fortinet Code Security Scan
-
-**Files scanned:**
-${FILES_LIST}
-
-No security issues found in your changed files.
-
-**FYI:** ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium pre-existing issues exist in other files. Run \`/fortinet:code-review\` for details."
+  MESSAGE="Fortinet Code Security scanned your changes and found no new issues. ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium pre-existing issues exist in other files. Run /fortinet:code-review for details."
 
   touch "$MARKER_FILE"
   log "EXIT(0): No findings in changed files. ${PREEXIST_TOTAL} pre-existing findings reported as FYI"
