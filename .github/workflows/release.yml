@@ -87,7 +87,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Build release notes
-        if: steps.version.outputs.skip != 'true'
+        if: (github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true') && steps.version.outputs.skip != 'true'
         id: notes
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -114,14 +114,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create tag
-        if: steps.version.outputs.skip != 'true'
+        if: (github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true') && steps.version.outputs.skip != 'true'
         run: |
           V="${{ steps.version.outputs.version }}"
           git tag "v${V}"
           git push origin "v${V}"
 
       - name: Package plugin
-        if: steps.version.outputs.skip != 'true'
+        if: (github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true') && steps.version.outputs.skip != 'true'
         run: |
           V="${{ steps.version.outputs.version }}"
           VERSIONED_ZIP="forticnapp-llm-plugins-v${V}.zip"
@@ -136,7 +136,7 @@ jobs:
           echo "latest_zip=$LATEST_ZIP" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
-        if: steps.version.outputs.skip != 'true'
+        if: (github.event_name != 'pull_request' || steps.changes.outputs.has_plugin_changes == 'true') && steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ steps.version.outputs.version }}"
