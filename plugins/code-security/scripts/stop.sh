@@ -9,6 +9,7 @@ HOOK_INPUT=$(cat)
 # --- Check plugin config ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/config-reader.sh"
+source "$SCRIPT_DIR/file-utils.sh"
 
 HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
 resolve_config "$HOOK_CWD"
@@ -94,9 +95,23 @@ if [ -f "$MARKER_FILE" ]; then
 fi
 log "No scan marker found, proceeding with scan. Hash: $CHANGES_HASH"
 
-# Get scan directory from cwd in hook input
-SCAN_PATH=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
-[ -z "$SCAN_PATH" ] && SCAN_PATH=$(echo "$CHANGED" | head -1 | xargs dirname)
+# Resolve scan directory: prefer the git root of the first changed file over
+# the session cwd. This handles the case where Claude edits files in a repo
+# different from the working directory it was launched in.
+SCAN_PATH=""
+FIRST_CHANGED=$(echo "$CHANGED" | head -1)
+if [ -n "$FIRST_CHANGED" ] && [ -f "$FIRST_CHANGED" ]; then
+  FIRST_DIR=$(dirname "$FIRST_CHANGED")
+  GIT_ROOT=$(cd "$FIRST_DIR" && git rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$GIT_ROOT" ]; then
+    SCAN_PATH="$GIT_ROOT"
+    log "Resolved scan path from changed files git root: $SCAN_PATH"
+  fi
+fi
+if [ -z "$SCAN_PATH" ]; then
+  SCAN_PATH=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+  [ -z "$SCAN_PATH" ] && SCAN_PATH=$(echo "$CHANGED" | head -1 | xargs dirname)
+fi
 log "Scan path: $SCAN_PATH"
 
 # Build list of changed file relative paths (strip SCAN_PATH prefix) for matching
@@ -108,23 +123,43 @@ while IFS= read -r f; do
   echo "$rel" >> "$CHANGED_RELATIVE"
 done <<< "$CHANGED"
 
-PIDS=()
-SCAN_TYPE="IaC+SCA"
+# Build list of changed file directories for proximity matching
+CHANGED_DIRS="$SCAN_TMPDIR/changed_dirs.txt"
+while IFS= read -r rel; do
+  [ -z "$rel" ] && continue
+  dirname "$rel" >> "$CHANGED_DIRS"
+done < "$CHANGED_RELATIVE"
+# Deduplicate
+sort -u "$CHANGED_DIRS" -o "$CHANGED_DIRS"
 
-# Launch both IaC and SCA scans in parallel
-# IaC: JSON format (has .findings[] with filePath, policyId, isSuppressed)
-# SCA: SARIF format (has file paths for all finding types — CVEs, SAST, secrets, licenses)
-log "Starting IaC and SCA scans..."
-lacework iac scan --upload=false --noninteractive \
-  --format json --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>&1 &
-PIDS+=($!)
+# Expand modified files with companion manifests/lock files for SCA --modified-files
+SCA_MODIFIED_LIST=$(expand_with_companions "$(cat "$CHANGED_RELATIVE")" "$SCAN_PATH")
+SCA_MODIFIED_FILES=$(echo "$SCA_MODIFIED_LIST" | grep -v '^$' | paste -sd ',' -)
+log "SCA modified files (with companions): $SCA_MODIFIED_FILES"
+
+PIDS=()
+
+# Launch scans — IaC only if changed files include IaC patterns
+CHANGED_FILES_LIST=$(cat "$CHANGED_RELATIVE")
+if has_iac_files "$CHANGED_FILES_LIST"; then
+  log "Starting IaC and SCA scans..."
+  lacework iac scan --upload=false --noninteractive \
+    --format json --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>"$SCAN_TMPDIR/iac.stderr" &
+  PIDS+=($!)
+else
+  log "No IaC files in changed files — skipping IaC scan"
+  log "Starting SCA scan only..."
+fi
 
 lacework sca scan "$SCAN_PATH" --deployment=offprem --noninteractive --save-results=false \
-  -f sarif -o "$SCAN_TMPDIR/sca.sarif" >/dev/null 2>&1 &
+  -f sarif -o "$SCAN_TMPDIR/sca.sarif" \
+  --modified-files="$SCA_MODIFIED_FILES" >/dev/null 2>"$SCAN_TMPDIR/sca.stderr" &
 PIDS+=($!)
 
 # Wait for all scans
 for PID in "${PIDS[@]}"; do wait "$PID"; done
+[ -s "$SCAN_TMPDIR/iac.stderr" ] && log "IaC stderr: $(cat "$SCAN_TMPDIR/iac.stderr")"
+[ -s "$SCAN_TMPDIR/sca.stderr" ] && log "SCA stderr: $(cat "$SCAN_TMPDIR/sca.stderr")"
 log "Scans complete. IaC JSON: $([ -f "$SCAN_TMPDIR/iac.json" ] && echo "exists" || echo "missing"), SCA SARIF: $([ -f "$SCAN_TMPDIR/sca.sarif" ] && echo "exists" || echo "missing")"
 
 # --- Helper: check if a finding's file path matches a changed file ---
@@ -144,7 +179,7 @@ is_related_to_changes() {
 }
 
 # Separate findings into changed-file vs pre-existing
-CHANGED_CRIT=0; CHANGED_HIGH=0
+CHANGED_CRIT=0; CHANGED_HIGH=0; CHANGED_MED=0
 PREEXIST_CRIT=0; PREEXIST_HIGH=0; PREEXIST_MED=0
 FINDING_NUM=0
 
@@ -216,10 +251,13 @@ if [ -f "$SCA_FILE" ] && jq empty "$SCA_FILE" 2>/dev/null; then
     rest=$(echo "$sev" | cut -c2-)
     display_sev="${first_char}${rest}"
 
-    # Only process critical and high — medium and below are counted as pre-existing only
     if [ "$display_sev" != "Critical" ] && [ "$display_sev" != "High" ]; then
       if [ "$display_sev" = "Medium" ]; then
-        PREEXIST_MED=$((PREEXIST_MED + 1))
+        if is_related_to_changes "$file_path"; then
+          CHANGED_MED=$((CHANGED_MED + 1))
+        else
+          PREEXIST_MED=$((PREEXIST_MED + 1))
+        fi
       fi
       continue
     fi
@@ -280,8 +318,8 @@ fi
 
 # --- Build output message ---
 CHANGED_TOTAL=$((CHANGED_CRIT + CHANGED_HIGH))
-PREEXIST_TOTAL=$((PREEXIST_CRIT + PREEXIST_HIGH + PREEXIST_MED))
-log "Findings — Changed files: ${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High | Pre-existing: ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium"
+PREEXIST_TOTAL=$((PREEXIST_CRIT + PREEXIST_HIGH))
+log "Findings — Changed: ${CHANGED_CRIT} Critical, ${CHANGED_HIGH} High, ${CHANGED_MED} Medium | Pre-existing: ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium"
 
 CHANGED_FINDINGS_TEXT=$(cat "$CHANGED_FINDINGS")
 PREEXIST_FINDINGS_TEXT=$(cat "$PREEXIST_FINDINGS")
@@ -312,7 +350,7 @@ ${CHANGED_FINDINGS_TEXT}"
   if [ "$PREEXIST_TOTAL" -gt 0 ]; then
     MESSAGE="${MESSAGE}
 Pre-existing issues (not related to your changes):
-${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings in other files. Run /fortinet:code-review for the full report.
+${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High findings in other files. Run /fortinet:code-review for the full report.
 "
   fi
 
@@ -328,7 +366,7 @@ What would you like to do?
   exit 2
 
 elif [ "$PREEXIST_TOTAL" -gt 0 ]; then
-  MESSAGE="Fortinet Code Security scanned your changes and found no new issues. ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium pre-existing issues exist in other files. Run /fortinet:code-review for details."
+  MESSAGE="Fortinet Code Security scanned your changes and found no new issues. ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High pre-existing issues exist in other files. Run /fortinet:code-review for details."
 
   touch "$MARKER_FILE"
   log "EXIT(0): No findings in changed files. ${PREEXIST_TOTAL} pre-existing findings reported as FYI"

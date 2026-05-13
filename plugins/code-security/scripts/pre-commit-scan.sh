@@ -40,15 +40,17 @@ HOOK_INPUT=$(cat)
 COMMAND=$(echo "$HOOK_INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -z "$COMMAND" ] && exit 0
 
-# Match git commit commands (including --amend, -m, etc.)
+# Match git commit commands (including --amend, -m, -C <path>, etc.)
 # Must start with "git commit" or contain "git commit" after && or ;
-if ! echo "$COMMAND" | grep -qE '(^|&&\s*|;\s*)git\s+commit(\s|$)'; then
+# Also matches "git -C <path> commit" which Claude uses when cwd differs from repo
+if ! echo "$COMMAND" | grep -qE '(^|&&\s*|;\s*)git\s+(-C\s+\S+\s+)?commit(\s|$)'; then
   exit 0
 fi
 
 # --- Read config ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/config-reader.sh"
+source "$SCRIPT_DIR/file-utils.sh"
 
 HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 resolve_config "$HOOK_CWD"
@@ -88,6 +90,25 @@ log "Command: $COMMAND"
 # Strategy: check already-staged files first, then also extract files from any
 # git add commands in the same chain.
 SCAN_PATH="$HOOK_CWD"
+CD_TARGET=$(echo "$COMMAND" | grep -oE '(^|&&\s*|;\s*)cd\s+[^;&]+' | head -1 | sed 's/^.*cd *//')
+if [ -n "$CD_TARGET" ] && echo "$CD_TARGET" | grep -qE '^[~a-zA-Z0-9_. /-]+$'; then
+  RESOLVED_CD=$(eval echo "$CD_TARGET" 2>/dev/null)
+  if [ -d "$RESOLVED_CD" ]; then
+    SCAN_PATH="$RESOLVED_CD"
+    log "Resolved scan path from cd in command: $SCAN_PATH"
+  fi
+fi
+# Also check for "git -C <path>" which Claude uses when cwd differs from repo
+if [ "$SCAN_PATH" = "$HOOK_CWD" ]; then
+  GIT_C_PATH=$(echo "$COMMAND" | grep -oE 'git\s+-C\s+\S+' | head -1 | sed 's/git *-C *//')
+  if [ -n "$GIT_C_PATH" ] && echo "$GIT_C_PATH" | grep -qE '^[~a-zA-Z0-9_. /-]+$'; then
+    RESOLVED_GIT_C=$(eval echo "$GIT_C_PATH" 2>/dev/null)
+    if [ -d "$RESOLVED_GIT_C" ]; then
+      SCAN_PATH="$RESOLVED_GIT_C"
+      log "Resolved scan path from git -C in command: $SCAN_PATH"
+    fi
+  fi
+fi
 
 # 1. Already staged files
 COMMIT_FILES=$(cd "$SCAN_PATH" && git diff --cached --name-only 2>/dev/null)
@@ -120,19 +141,38 @@ trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 STAGED_RELATIVE="$SCAN_TMPDIR/staged_relative.txt"
 echo "$COMMIT_FILES" > "$STAGED_RELATIVE"
 
+STAGED_DIRS="$SCAN_TMPDIR/staged_dirs.txt"
+while IFS= read -r rel; do
+  [ -z "$rel" ] && continue
+  dirname "$rel"
+done <<< "$COMMIT_FILES" | sort -u > "$STAGED_DIRS"
+
+# Expand staged files with companion manifests/lock files for SCA --modified-files
+SCA_MODIFIED_LIST=$(expand_with_companions "$COMMIT_FILES" "$SCAN_PATH")
+SCA_MODIFIED_FILES=$(echo "$SCA_MODIFIED_LIST" | grep -v '^$' | paste -sd ',' -)
+log "SCA modified files (with companions): $SCA_MODIFIED_FILES"
+
 # --- Run scans in parallel ---
-log "Starting IaC and SCA scans..."
 PIDS=()
 
-lacework iac scan --upload=false --noninteractive \
-  --format json --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>&1 &
-PIDS+=($!)
+if has_iac_files "$COMMIT_FILES"; then
+  log "Starting IaC and SCA scans..."
+  lacework iac scan --upload=false --noninteractive \
+    --format json --save-result "$SCAN_TMPDIR/iac.json" -d "$SCAN_PATH" >/dev/null 2>"$SCAN_TMPDIR/iac.stderr" &
+  PIDS+=($!)
+else
+  log "No IaC files in staged files — skipping IaC scan"
+  log "Starting SCA scan only..."
+fi
 
 lacework sca scan "$SCAN_PATH" --deployment=offprem --noninteractive --save-results=false \
-  -f sarif -o "$SCAN_TMPDIR/sca.sarif" >/dev/null 2>&1 &
+  -f sarif -o "$SCAN_TMPDIR/sca.sarif" \
+  --modified-files="$SCA_MODIFIED_FILES" >/dev/null 2>"$SCAN_TMPDIR/sca.stderr" &
 PIDS+=($!)
 
 for PID in "${PIDS[@]}"; do wait "$PID"; done
+[ -s "$SCAN_TMPDIR/iac.stderr" ] && log "IaC stderr: $(cat "$SCAN_TMPDIR/iac.stderr")"
+[ -s "$SCAN_TMPDIR/sca.stderr" ] && log "SCA stderr: $(cat "$SCAN_TMPDIR/sca.stderr")"
 log "Scans complete."
 
 # --- Helper: check if finding's file path matches a committed file ---
@@ -152,7 +192,7 @@ is_related_to_staged() {
 }
 
 # --- Process findings ---
-STAGED_CRIT=0; STAGED_HIGH=0
+STAGED_CRIT=0; STAGED_HIGH=0; STAGED_MED=0
 PREEXIST_CRIT=0; PREEXIST_HIGH=0; PREEXIST_MED=0
 FINDING_NUM=0
 
@@ -209,7 +249,11 @@ if [ -f "$SCA_FILE" ] && jq empty "$SCA_FILE" 2>/dev/null; then
 
     if [ "$display_sev" != "Critical" ] && [ "$display_sev" != "High" ]; then
       if [ "$display_sev" = "Medium" ]; then
-        PREEXIST_MED=$((PREEXIST_MED + 1))
+        if is_related_to_staged "$file_path"; then
+          STAGED_MED=$((STAGED_MED + 1))
+        else
+          PREEXIST_MED=$((PREEXIST_MED + 1))
+        fi
       fi
       continue
     fi
@@ -266,8 +310,8 @@ fi
 
 # --- Build output ---
 STAGED_TOTAL=$((STAGED_CRIT + STAGED_HIGH))
-PREEXIST_TOTAL=$((PREEXIST_CRIT + PREEXIST_HIGH + PREEXIST_MED))
-log "Findings — Staged files: ${STAGED_CRIT} Critical, ${STAGED_HIGH} High | Pre-existing: ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium"
+PREEXIST_TOTAL=$((PREEXIST_CRIT + PREEXIST_HIGH))
+log "Findings — Staged: ${STAGED_CRIT} Critical, ${STAGED_HIGH} High, ${STAGED_MED} Medium | Pre-existing: ${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium"
 
 # If no Critical/High in staged files, allow the commit
 if [ "$STAGED_TOTAL" -eq 0 ]; then
@@ -288,7 +332,7 @@ ${STAGED_FINDINGS_TEXT}"
 if [ "$PREEXIST_TOTAL" -gt 0 ]; then
   MESSAGE="${MESSAGE}
 Pre-existing issues (not in staged files):
-${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High, ${PREEXIST_MED} Medium findings in other files. Run /fortinet:code-review for the full report.
+${PREEXIST_CRIT} Critical, ${PREEXIST_HIGH} High findings in other files. Run /fortinet:code-review for the full report.
 "
 fi
 
