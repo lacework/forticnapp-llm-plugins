@@ -268,13 +268,8 @@ Automatic security scanning (pre-commit and post-task hooks) uses the SCA CLI's 
 
 **IaC scanning:**
 - IaC scanning is skipped entirely when no changed files have extensions that could be IaC (`.tf`, `.tf.json`, `.yaml`, `.yml`, `.json`, `Dockerfile`, `*.dockerfile`)
-- When triggered, IaC still scans the full repo directory (no `--modified-files` equivalent exists for the IaC CLI)
+- When triggered, IaC scans the full repo directory
 - Pure source code changes (`.go`, `.java`, `.ts`, `.py`, etc.) will not trigger IaC scanning
-
-**Accuracy:**
-- **CVE detection**: Companion lock files (e.g., `package-lock.json` for `package.json`, `go.sum` for `go.mod`) are automatically included to ensure full dependency resolution
-- **CWE detection (Semgrep)**: Zero accuracy loss — all rules operate per-file with no cross-file analysis
-- **Secret scanning**: Zero accuracy loss — secrets are self-contained per file
 
 ## Known Limitations
 
