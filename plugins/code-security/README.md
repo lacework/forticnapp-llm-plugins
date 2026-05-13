@@ -5,10 +5,10 @@ Automatically scans your IaC and dependency files for security vulnerabilities u
 ## Features
 
 - **Easy setup**: Run `/fortinet:cli-setup` to install and configure the Lacework CLI and scanning components
-- **Auto-remediation**: Critical/high findings trigger Claude to fix issues without prompting
+- **Auto-remediation**: Critical/high findings trigger Claude to re-invoke and present fix options (fix, add exception, or skip)
 - **Parallel scanning**: IaC and SCA scans run simultaneously to minimize wait time
 - **Smart scoping**: Only scans files changed in the current task, not the whole repo
-- **Dependency caching**: SCA scans skipped when dependencies haven't changed
+- **Scan deduplication**: Repeated scans are skipped when changed files and their contents haven't changed since the last scan
 
 ## Install & Configuration
 
@@ -127,7 +127,7 @@ Post-task mode:
           └─> Changed files found? → lacework iac scan & lacework sca scan &
           └─> Filter findings to changed files
           └─> No findings in changed files → exit 0
-          └─> Critical/high in changed files → exit 2 → Claude auto-remediates
+          └─> Critical/high in changed files → exit 2 → Claude re-invokes with fix options
 ```
 
 ## Credential Strategy
