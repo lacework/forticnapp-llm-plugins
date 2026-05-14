@@ -69,6 +69,19 @@ ONLY include if there are findings. List prioritized actions based on actual fin
 
 Do NOT include generic security advice. Only recommend actions directly tied to scan results.
 
+### 5a. MCP Enrichment (if codesec MCP server is connected)
+
+For each Critical/High finding that has a FortiCNAPP weakness ID (e.g. `INJ-CMD-001`, `INPUT-XSS-001`, `AUTH-CREDS-001`), call `mcp__codesec__get_weakness` with the ID to get:
+- Full description and remediation recommendation
+- CWE mappings
+- Language-specific code examples (vulnerable vs secure patterns)
+
+Use the MCP response to improve the **Fix** field in the finding output — reference the scanner's recommended remediation and code patterns instead of generic advice. If the MCP response includes `codeExamples` for the relevant language, include the secure pattern in the recommendation.
+
+Note: The `// [!code ++]` annotations in code examples are rendering markers — strip them when presenting code to the user.
+
+If the MCP server is not connected or the call fails, fall back to the scan output description as before.
+
 ### 6. Exception Management (only if there are findings)
 
 For each finding, ask the user whether to **fix** or **add exception**.

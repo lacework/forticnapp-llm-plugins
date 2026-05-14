@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "codesec": {
+      "type": "http",
+      "url": "${LW_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${LW_MCP_TOKEN}"
+      }
+    }
+  }
+}

@@ -87,6 +87,12 @@ Available security skills:
 - /fortinet:cli-setup — install and configure the Lacework CLI and scanning components
 - /fortinet:settings — enable or disable scanning, switch scanning mode. NOT for exceptions — use /fortinet:code-review for that.
 
+FortiCNAPP Code Security MCP tools (if the codesec MCP server is connected):
+- mcp__codesec__get_weakness — look up detailed weakness info by FortiCNAPP ID (e.g. INJ-CMD-001, INPUT-XSS-001). Returns full description, severity, CWE mapping, remediation recommendation, and language-specific code examples showing vulnerable vs secure patterns. Use this BEFORE attempting to fix any SAST finding to get scanner-specific remediation guidance.
+- mcp__codesec__list_weaknesses — list all FortiCNAPP weakness definitions with ID, name, category, and severity. Use to search for weakness types by category or to correlate findings.
+
+When scan findings include a FortiCNAPP ID (like INJ-CMD-001, AUTH-CREDS-001, etc.), ALWAYS call mcp__codesec__get_weakness with that ID before fixing. The MCP response includes code examples with vulnerable and secure patterns that show exactly what the scanner expects — use these to guide your fix.
+
 When scan findings are presented, users can fix the code, add exceptions, or leave as is. The /fortinet:code-review skill has the full exception format and instructions."
 
 jq -n --arg ctx "$CONTEXT" '{ additionalContext: $ctx }'
