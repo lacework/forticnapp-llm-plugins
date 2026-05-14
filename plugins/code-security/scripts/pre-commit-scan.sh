@@ -90,25 +90,6 @@ log "Command: $COMMAND"
 # Strategy: check already-staged files first, then also extract files from any
 # git add commands in the same chain.
 SCAN_PATH="$HOOK_CWD"
-CD_TARGET=$(echo "$COMMAND" | grep -oE '(^|&&\s*|;\s*)cd\s+[^;&]+' | head -1 | sed 's/^.*cd *//')
-if [ -n "$CD_TARGET" ] && echo "$CD_TARGET" | grep -qE '^[~a-zA-Z0-9_. /-]+$'; then
-  RESOLVED_CD=$(eval echo "$CD_TARGET" 2>/dev/null)
-  if [ -d "$RESOLVED_CD" ]; then
-    SCAN_PATH="$RESOLVED_CD"
-    log "Resolved scan path from cd in command: $SCAN_PATH"
-  fi
-fi
-# Also check for "git -C <path>" which Claude uses when cwd differs from repo
-if [ "$SCAN_PATH" = "$HOOK_CWD" ]; then
-  GIT_C_PATH=$(echo "$COMMAND" | grep -oE 'git\s+-C\s+\S+' | head -1 | sed 's/git *-C *//')
-  if [ -n "$GIT_C_PATH" ] && echo "$GIT_C_PATH" | grep -qE '^[~a-zA-Z0-9_. /-]+$'; then
-    RESOLVED_GIT_C=$(eval echo "$GIT_C_PATH" 2>/dev/null)
-    if [ -d "$RESOLVED_GIT_C" ]; then
-      SCAN_PATH="$RESOLVED_GIT_C"
-      log "Resolved scan path from git -C in command: $SCAN_PATH"
-    fi
-  fi
-fi
 
 # 1. Already staged files
 COMMIT_FILES=$(cd "$SCAN_PATH" && git diff --cached --name-only 2>/dev/null)
@@ -141,13 +122,8 @@ trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 STAGED_RELATIVE="$SCAN_TMPDIR/staged_relative.txt"
 echo "$COMMIT_FILES" > "$STAGED_RELATIVE"
 
-STAGED_DIRS="$SCAN_TMPDIR/staged_dirs.txt"
-while IFS= read -r rel; do
-  [ -z "$rel" ] && continue
-  dirname "$rel"
-done <<< "$COMMIT_FILES" | sort -u > "$STAGED_DIRS"
-
 # Expand staged files with companion manifests/lock files for SCA --modified-files
+# Note: COMMIT_FILES is guaranteed non-empty here (empty case exits early above)
 SCA_MODIFIED_LIST=$(expand_with_companions "$COMMIT_FILES" "$SCAN_PATH")
 SCA_MODIFIED_FILES=$(echo "$SCA_MODIFIED_LIST" | grep -v '^$' | paste -sd ',' -)
 log "SCA modified files (with companions): $SCA_MODIFIED_FILES"
@@ -233,8 +209,14 @@ if [ -f "$IAC_FILE" ] && jq empty "$IAC_FILE" 2>/dev/null; then
     echo "- [${sev}] ${title} — ${loc} (${policy_id})" >> "$TARGET"
   done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\((.description // "") | gsub("\n"; " "))§\(.policyId // "")"' "$IAC_FILE" 2>/dev/null)
 
-  IAC_MED=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium")] | length' "$IAC_FILE" 2>/dev/null || echo 0)
-  PREEXIST_MED=$((PREEXIST_MED + IAC_MED))
+  while IFS='§' read -r med_file_path; do
+    [ -z "$med_file_path" ] && continue
+    if is_related_to_staged "$med_file_path"; then
+      STAGED_MED=$((STAGED_MED + 1))
+    else
+      PREEXIST_MED=$((PREEXIST_MED + 1))
+    fi
+  done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium") | "\(.filePath // "")"' "$IAC_FILE" 2>/dev/null)
 fi
 
 ## --- SCA findings (SARIF format) ---

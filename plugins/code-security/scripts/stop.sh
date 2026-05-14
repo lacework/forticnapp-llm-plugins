@@ -123,16 +123,8 @@ while IFS= read -r f; do
   echo "$rel" >> "$CHANGED_RELATIVE"
 done <<< "$CHANGED"
 
-# Build list of changed file directories for proximity matching
-CHANGED_DIRS="$SCAN_TMPDIR/changed_dirs.txt"
-while IFS= read -r rel; do
-  [ -z "$rel" ] && continue
-  dirname "$rel" >> "$CHANGED_DIRS"
-done < "$CHANGED_RELATIVE"
-# Deduplicate
-sort -u "$CHANGED_DIRS" -o "$CHANGED_DIRS"
-
 # Expand modified files with companion manifests/lock files for SCA --modified-files
+# Note: CHANGED is guaranteed non-empty here (empty case exits early above)
 SCA_MODIFIED_LIST=$(expand_with_companions "$(cat "$CHANGED_RELATIVE")" "$SCAN_PATH")
 SCA_MODIFIED_FILES=$(echo "$SCA_MODIFIED_LIST" | grep -v '^$' | paste -sd ',' -)
 log "SCA modified files (with companions): $SCA_MODIFIED_FILES"
@@ -224,9 +216,14 @@ if [ -f "$IAC_FILE" ] && jq empty "$IAC_FILE" 2>/dev/null; then
     echo "- [${sev}] ${title} — ${loc} (${policy_id})" >> "$TARGET"
   done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and (.severity=="Critical" or .severity=="High")) | "\(.severity)§\(.title // .ruleId // "Unknown")§\(.resource // "N/A")§\(.filePath // "")§\(.line // "")§\((.description // "") | gsub("\n"; " "))§\(.policyId // "")"' "$IAC_FILE" 2>/dev/null)
 
-  # Count medium findings separately (pre-existing only, never shown in detail)
-  IAC_MED=$(jq '[.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium")] | length' "$IAC_FILE" 2>/dev/null || echo 0)
-  PREEXIST_MED=$((PREEXIST_MED + IAC_MED))
+  while IFS='§' read -r med_file_path; do
+    [ -z "$med_file_path" ] && continue
+    if is_related_to_changes "$med_file_path"; then
+      CHANGED_MED=$((CHANGED_MED + 1))
+    else
+      PREEXIST_MED=$((PREEXIST_MED + 1))
+    fi
+  done < <(jq -r '.findings[]? | select(.pass==false and .isSuppressed!=true and .severity=="Medium") | "\(.filePath // "")"' "$IAC_FILE" 2>/dev/null)
 fi
 
 ## --- SCA findings (SARIF format) ---
