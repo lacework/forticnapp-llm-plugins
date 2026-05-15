@@ -257,6 +257,20 @@ bash plugins/code-security/tests/test-stop.sh
 | Linux (x86_64, arm64) | curl installer |
 | Windows | Not supported in Phase 1 |
 
+## Scanning Scope
+
+Automatic security scanning (pre-commit and post-task hooks) uses the SCA CLI's `--modified-files` flag to scope scans to only the files changed in the current session, plus their companion dependency files. This dramatically reduces scan time on large repositories (from minutes to seconds).
+
+**What this means:**
+- **Findings in your changed files** are reported as normal (blockers for Critical/High)
+- **Pre-existing findings in unmodified files** are NOT reported by automatic hooks
+- **Full coverage** is available on demand via `/fortinet:code-review` (scans the entire repo)
+
+**IaC scanning:**
+- IaC scanning is skipped entirely when no changed files have extensions that could be IaC (`.tf`, `.tf.json`, `.yaml`, `.yml`, `.json`, `Dockerfile`, `*.dockerfile`)
+- When triggered, IaC scans the full repo directory
+- Pure source code changes (`.go`, `.java`, `.ts`, `.py`, etc.) will not trigger IaC scanning
+
 ## Known Limitations
 
 ### Pre-commit mode and subagents

@@ -52,9 +52,8 @@ Available versions are listed on the [Releases](../../releases) page.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a branch from `dev` for your work
-3. Make your changes following existing patterns
-4. Run the test suite: `bash plugins/code-security/tests/test-*.sh`
-5. Submit a PR targeting `dev`, filling in the pull request template
-6. Once approved and merged, changes will be included in the next release
+1. Create a branch from `dev` for your work
+2. Make your changes following existing patterns
+3. Run the test suite: `bash plugins/code-security/tests/test-*.sh`
+4. Submit a PR targeting `dev`, filling in the pull request template
+5. Once approved and merged, changes will be included in the next release
