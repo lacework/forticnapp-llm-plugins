@@ -118,10 +118,6 @@ log "Files being committed: $(echo "$COMMIT_FILES" | tr '\n' ', ')"
 SCAN_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$SCAN_TMPDIR"' EXIT
 
-# Build staged files list for filtering
-STAGED_RELATIVE="$SCAN_TMPDIR/staged_relative.txt"
-echo "$COMMIT_FILES" > "$STAGED_RELATIVE"
-
 # Expand staged files with companion manifests/lock files for SCA --modified-files
 # Note: COMMIT_FILES is guaranteed non-empty here (empty case exits early above)
 SCA_MODIFIED_LIST=$(expand_with_companions "$COMMIT_FILES" "$SCAN_PATH")
